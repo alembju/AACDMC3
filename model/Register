@@ -1,0 +1,29 @@
+const mongoose = require('mongoose')
+
+const RegisterSchema= new mongoose.Schema({
+    orgname:String,
+    title:String,
+    principal:String,
+    phone:String,
+    dsharing:String,
+    availability:String,
+    raw:String,
+    coverage:String,
+    BGDate:Date,
+    LDate:Date,
+    date:String,
+    gender:String,
+    type:String,
+    cleaned:String,
+    url:String,
+    comments:String,
+    email:String,
+    Title:String,
+    pdf: String,
+    
+},
+{ collection: "register" }
+);
+
+mongoose.model("register" , RegisterSchema)
+//module.exports = RegisterMondel
