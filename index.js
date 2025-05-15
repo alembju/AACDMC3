@@ -67,17 +67,33 @@ app.use("/MalariaStor", express.static("MalariaStor"));
 app.use("/Polio", express.static("Polio"));
 app.use("/Rabies", express.static("Rabies"));
 app.use("/Meningits", express.static("Meningits"));
-
+app.use("/FinalReserchPaper", express.static("FinalReserchPaper"));
 app.use("/RiskA", express.static("RiskA"));
 app.use("/Bulletin", express.static("Bulletin"));
+app.use("/OutbreakInvestigation", express.static("OutbreakInvestigation"));
+
+app.use("/ActiveSearch", express.static("ActiveSearch"));
+app.use("/NOPV", express.static("NOPV"));
+app.use("/VRAM", express.static("VRAM"));
+app.use("/EPRP", express.static("EPRP"));
+app.use("/IAR", express.static("IAR"));
+app.use("/Publication", express.static("Publication"));
+app.use("/ETraining", express.static("ETraining"));
+app.use("/Suppervision", express.static("Suppervision"));
+app.use("/RiskComm", express.static("RiskComm"));
+app.use("/Guidlines", express.static("Guidlines"));
+app.use("/IRBPolicy", express.static("IRBPolicy"));
+app.use("/capacityB", express.static("capacityB"));
+app.use("/IRBPolicy", express.static("IRBPolicy"));
 //app.use(express.json())
 //app.use(express.urlencoded({extended:true}))
 app.use(bodyParser.json())
+
 //const URI = ("mongodb+srv://AACDMC:Alem%400913629813;@cluster0.en5lj.mongodb.net//image?retryWrites=true&w=majority&appName=Cluster0")
 // console.log(process.env.MONGO_URL)
-//  const MONGO_URL = process.env.MONGO_URL ;
-//  mongoose.connect(process.env.MONGO_URL)
-mongoose.connect('mongodb://127.0.0.1:27017/image')
+  //const MONGO_URL = process.env.MONGO_URL ;
+ mongoose.connect(process.env.MONGO_URL)
+//mongoose.connect("")
 // async function Connect() {
 //   try{
 //    await mongoose.connect('URI')
@@ -87,8 +103,6 @@ mongoose.connect('mongodb://127.0.0.1:27017/image')
 //   }
 // }
 // connect()
-
-///////////////////////////Authontication ,sesion,cookies//////
 
 
 ////////////////////////////------------Authontication ------//////////////////
@@ -12664,7 +12678,7 @@ app.get("/get-Bulliten", async (req, res) => {
 
 const OutbreakI = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/OutbreakInvestigation");
+    cb(null, "./OutbreakInvestigation");
   },
   IRBUploadfilename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -12698,11 +12712,11 @@ app.get("/get-OutbreakI", async (req, res) => {
   } catch (error) {}
 });
 
-//count total health facility priority level/////////////////////////////////////////////////////////
+//ActiveSearch/////////////////////////////////////////////////////////
  //high------------------------------------------------------------
  const ActiveSearch = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/ActiveSearch");
+    cb(null, "./ActiveSearch");
   },
   IRBUploadfilename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -12753,13 +12767,13 @@ app.get("/Gete-LowLevel", async (req, res) => {
   } catch (error) {}
 });
 
-//Outbreak Investigation uploaded/////////////////////////////////////////////////////////
+//NOPV Investigation uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
 
 const NOPV = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/NOPV");
+    cb(null, "./NOPV");
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -12797,7 +12811,7 @@ app.get("/get-NOPV", async (req, res) => {
 
 const VRAM = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/VRAM");
+    cb(null, "./VRAM");
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -12835,7 +12849,7 @@ app.get("/get-VRAM", async (req, res) => {
 
 const EPRP = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/EPRP");
+    cb(null, "./EPRP");
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -12868,13 +12882,13 @@ app.get("/get-EPRP", async (req, res) => {
   } catch (error) {}
 });
 
-//EPRP uploaded/////////////////////////////////////////////////////////
+//RiskA uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
 
 const RiskA = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "Home directory/httpdocs/RiskA");cd
+    cb(null, "./RiskA");cd
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -12909,13 +12923,13 @@ app.get("/get-RiskA", async (req, res) => {
     });
   } catch (error) {}
 });
-//Outbreak Investigation uploaded/////////////////////////////////////////////////////////
+//IAR uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
 
 const IAR = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/IAR");
+    cb(null, "./IAR");
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -12954,7 +12968,7 @@ app.get("/get-IAR", async (req, res) => {
 
 const Publication = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/Publication");
+    cb(null, "./Publication");
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -12993,7 +13007,7 @@ app.get("/get-Publication", async (req, res) => {
 
 const ETraining = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/ETraining");
+    cb(null, ".ETraining");
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -13028,13 +13042,13 @@ app.get("/get-ETraining", async (req, res) => {
   } catch (error) {}
 });
 
-//////Outbreak Investigation uploaded/////////////////////////////////////////////////////////
+///Suppervision uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
 
 const Suppervision = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/Suppervision");
+    cb(null, "./Suppervision");
   },
   filename: function (req, file, cb) {
     ////
@@ -13187,7 +13201,7 @@ app.get("/get-CardBottum", async (req, res) => {
 
 const CardRiskComm = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null,"../Client/src/RiskComm");
+    cb(null,"./RiskComm");
   },
   filename: function (req, file, cb) {
     cb(null,  file.originalname);
@@ -13243,7 +13257,7 @@ app.get("/RiskComm", async (req, res) => {
 
 const Guidlines = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null,"../Client/src/Guidlines");
+    cb(null,"./Guidlines");
   },
   filename: function (req, file, cb) {
     cb(null, file.originalname);
@@ -13282,7 +13296,7 @@ app.get("/get-Guidlines", async (req, res) => {
 
 const IRBPolicy = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null,"../Client/src/IRBPolicy");
+    cb(null,".IRBPolicy");
   },
   filename: function (req, file, cb) {
     cb(null, file.originalname);
@@ -13319,7 +13333,7 @@ app.get("/get-IRBPolicy", async (req, res) => {
 
 const capacityBstorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null,"../Client/src/capacityB");
+    cb(null,"./capacityB");
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -13421,7 +13435,7 @@ app.get('/EVENTSGet',(req, res) =>{
 io.on('connection', (socket) => {
   console.log('a user connected');
 });
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("server is runing")
 })
