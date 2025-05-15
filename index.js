@@ -13007,7 +13007,7 @@ app.get("/get-Publication", async (req, res) => {
 
 const ETraining = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, ".ETraining");
+    cb(null, "./ETraining");
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -13087,7 +13087,7 @@ app.get("/get-Suppervision", async (req, res) => {
 
 const Cards = multer.diskStorage({
   destination: function (req, file, cb) { 
-    cb(null,"../Client/src/Cards");
+    cb(null,"./Cards");
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -13160,7 +13160,7 @@ res.json(results)
 
 const CardBottum = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null,"../Client/src/CardBottum");
+    cb(null,"./CardBottum");
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -13296,7 +13296,7 @@ app.get("/get-Guidlines", async (req, res) => {
 
 const IRBPolicy = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null,".IRBPolicy");
+    cb(null,"./IRBPolicy");
   },
   filename: function (req, file, cb) {
     cb(null, file.originalname);
