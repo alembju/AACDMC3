@@ -84,7 +84,7 @@ app.use("/RiskComm", express.static("RiskComm"));
 app.use("/Guidlines", express.static("Guidlines"));
 app.use("/IRBPolicy", express.static("IRBPolicy"));
 app.use("/capacityB", express.static("capacityB"));
-app.use("/IRBPolicy", express.static("IRBPolicy"));
+
 //app.use(express.json())
 //app.use(express.urlencoded({extended:true}))
 app.use(bodyParser.json())
@@ -1061,7 +1061,7 @@ try{
 
 const Image = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "../Client/src/images");
+    cb(null, "./BanerImage");
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -12888,7 +12888,7 @@ app.get("/get-EPRP", async (req, res) => {
 
 const RiskA = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "./RiskA");cd
+    cb(null, "./RiskA");
   },
   IRBUploadfilename: function (req, file, cb) {
     
@@ -13290,7 +13290,7 @@ app.get("/get-Guidlines", async (req, res) => {
   } catch (error) {}
 });
 
-//////Homepage CardBottum uploaded/////////////////////////////////////////////////////////
+//////Homepage IRBPolicy uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
 

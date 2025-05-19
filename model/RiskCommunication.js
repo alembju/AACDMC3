@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const RiskCommScehma = new mongoose.Schema(
   {
-    Title: String,
+    RTitle: String,
     Defination: String,
     Transmition: String,
     Prevation: String,
