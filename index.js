@@ -1262,22 +1262,22 @@ const transporter = nodemailer.createTransport({
   },
 })
 app.post("/Esend", attached.single("file"), async(req, res) =>{
-  const { Title,email,messages} = req.body;
+  const { Title,email,messages,Statua} = req.body;
   //const fileName = req.file.filename;
   const file= req.file;
-  console.log(Title,email, messages,file);
+  console.log(Title,email, messages,Statua,file);
 
   const mailOptions = {
     from: process.env.SMTP_MAIL,
     to: email,
     subject: Title,
     text: messages,
-    html: `<p>email:${email}</p><p>Subject:${Title}</p><p>messages: ${messages}</p>`,
-    attachement: [
-      {   // utf-8 string as an attachment
-        filename: file,
-        path: './image',
-      },]
+    html: `<p>email:${email}</p><p>Subject:${Title}</p><p>messages: ${messages}</p><p>Statua: ${Statua}</p>`,
+    attachments: [ 
+          { filename: file.originalname, 
+            content: file.buffer, 
+          }, 
+        ], 
     
   };
   await transporter.sendMail(mailOptions)
@@ -13042,6 +13042,48 @@ app.get("/get-ETraining", async (req, res) => {
   } catch (error) {}
 });
 
+//Education & Training by AAPHEML Research Unit /////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const SitRep = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "./SitRep");
+  },
+  IRBUploadfilename: function (req, file, cb) {
+    
+    cb(null, file.originalname);
+  },
+});
+
+require("./model/SitRep");
+const SitRepMondel = mongoose.model("SitRep");
+const SitRepStorage = multer({ storage: SitRep });
+
+app.post("/SitRep", SitRepStorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const SitRepTitle = req.body.SitRepTitle;
+  const SitRepDate = req.body.SitRepDate;
+  const SUpdate = req.body.SUpdate;
+  const EPIWeek = req.body.EPIWeek;
+  const SitRepfileName = req.file.filename;
+  try {
+    await SitRepMondel.create({SitRepTitle:SitRepTitle,SitRepDate:SitRepDate,SUpdate:SUpdate,EPIWeek:EPIWeek, pdf:SitRepfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-SitRep", async (req, res) => {
+  try {
+    SitRepMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+
+
 ///Suppervision uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
@@ -13103,9 +13145,10 @@ app.post("/CreatCards", Cardstorage.single("file"), async (req, res) => {
   console.log(req.file);
   const FrontTitle = req.body.FrontTitle;
   const Frontdescription = req.body.Frontdescription;
+   const FrontDetail = req.body.FrontDetail;
   const FrontCardsfileName = req.file.filename;
   try {
-    await CardsMondel.create({FrontTitle:FrontTitle, Frontdescription:Frontdescription, pdf:FrontCardsfileName});
+    await CardsMondel.create({FrontTitle:FrontTitle, Frontdescription:Frontdescription,FrontDetail:FrontDetail, pdf:FrontCardsfileName});
     res.send({ status: "ok" });
   } catch (error) {
     res.json({ status: error });

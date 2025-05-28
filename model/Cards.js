@@ -4,6 +4,7 @@ const CardsScehma = new mongoose.Schema(
   {
     FrontTitle: String,
     Frontdescription: String,
+    FrontDetail: String,
     pdf: String,
   },
   {
