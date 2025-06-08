@@ -1061,7 +1061,7 @@ try{
 
 const Image = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "./BanerImage");
+    cb(null, "https://aacdmc.gov.et/BanerImage");
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -1074,7 +1074,7 @@ require("./model/imageDetails");
 const ImagesMondel  = mongoose.model("ImageDetails" )
 const uploadImag = multer({ storage: Image });
 
-app.post("/upload-image", uploadImag.single("file"), async (req, res) => {
+app.post("/BanerImage", uploadImag.single("file"), async (req, res) => {
   console.log(req.file);
   const Title = req.body.Title;
   const Description = req.body.Description;
@@ -12655,9 +12655,10 @@ app.post("/WeekelyBuletin", BulletinStorage.single("file"), async (req, res) => 
   console.log(req.file);
   const Title = req.body.Title;
   const EPIWeek = req.body.EPIWeek;
+  const BullitenDate = req.body.BullitenDate;
   const BulletinfileName = req.file.filename;
   try {
-    await BulletinMondel.create({Title:Title, EPIWeek: EPIWeek,pdf:BulletinfileName});
+    await BulletinMondel.create({Title:Title, EPIWeek: EPIWeek,BullitenDate:BullitenDate,pdf:BulletinfileName});
     res.send({ status: "ok" });
   } catch (error) {
     res.json({ status: error });
@@ -12672,6 +12673,44 @@ app.get("/get-Bulliten", async (req, res) => {
   } catch (error) {}
 });
 
+/////bulletin uploaded/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");"./FinalReserchPaper"
+
+const SUpdate = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "./SUpdate");
+  },
+  IRBUploadfilename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/SUpdate");
+const SUpdateMondel = mongoose.model("SUpdate");
+const SUpdateStorage = multer({ storage: SUpdate });
+
+app.post("/SUpdate", SUpdateStorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const Title = req.body.Title;
+  const SUpdateDate = req.body.SUpdateDate;
+  const SUpdatefileName = req.file.filename;
+  try {
+    await SUpdateMondel.create({Title:Title, SUpdateDate: SUpdateDate,pdf:SUpdatefileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("//get-SUpdate", async (req, res) => {
+  try {
+    SUpdateMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
 //////Outbreak Investigation uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
@@ -13083,6 +13122,90 @@ app.get("/get-SitRep", async (req, res) => {
   } catch (error) {}
 });
 
+/////////////////////////////////////////////////////////blog backe end//////
+//Education & Training by AAPHEML Research Unit /////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const Newposts = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "./Newposts");
+  },
+  IRBUploadfilename: function (req, file, cb) {
+    
+    cb(null, file.originalname);
+  },
+});
+
+require("./model/Post");
+const PostMondel = mongoose.model("Post");
+const NewpostsStorage = multer({ storage: Newposts });
+
+app.post("/Newposts",NewpostsStorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const NPosttitle = req.body.NPosttitle;
+  const content = req.body.content;
+  try {
+    await PostMondel.create({NPosttitle:NPosttitle,content:content});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Newposts", async (req, res) => {
+  try {
+    PostMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+
+
+//////////////////////////////////////////BlogPost////////////////////////////////////////HFUpdate
+app.get('/get-BlogPost/:id', (req, res) => {
+  const id = req.params.id
+  PostMondel.findById({_id: id})
+  .then(post => res.json(post))
+  .catch(err => console.log(err))
+})
+
+// app.put('/updateDowenload/:id', (req, res) => {
+//   const id = req.params.id;
+//   RegisterMondel.findByIdAndUpdate({_id: id}, {
+//       name: req.body.name,
+//       email: req.body.email,
+//       age: req.body.age
+//   }).then(user => res.json(user))
+//   .catch(err => res.json(err))
+// })
+
+
+/////////////////////////////////////////////////////////blog backe end//////
+
+// Routes
+app.get('/posts', async (req, res) => {
+  const posts = await PostMondel.find();
+  res.json(posts);
+});
+
+// app.post('/posts', async (req, res) => {
+//   const newPost = new PostMondel(req.body);
+//   await newPost.save();
+//   res.status(201).json(newPost);
+// });
+
+// app.get('/posts/:id', async (req, res) => {
+//   const post = await PostMondel.findById(req.params.id);
+//   res.json(post);
+// });
+
+app.post('/posts/:id/comments', async (req, res) => {
+  const post = await PostMondel.findById(req.params.id);
+  post.comments.push({ text: req.body.text });
+  await post.save();
+  res.json(post);
+});
 
 ///Suppervision uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
