@@ -12704,7 +12704,7 @@ app.post("/SUpdate", SUpdateStorage.single("file"), async (req, res) => {
   }
 });
 
-app.get("//get-SUpdate", async (req, res) => {
+app.get("/get-SUpdate", async (req, res) => {
   try {
     SUpdateMondel.find({}).then((data) => {
       res.send({ status: "ok", data: data });
@@ -13280,7 +13280,7 @@ app.post("/CreatCards", Cardstorage.single("file"), async (req, res) => {
 
 app.get("/get-Cards", async (req, res) => {
   try {
-    CardsMondel.find({}).then((data) => {
+    CardsMondel.find({}).sort({ createdAt: -1 }).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
