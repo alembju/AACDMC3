@@ -7,6 +7,9 @@ const CardsScehma = new mongoose.Schema(
     FrontDetail: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Cards"
   }

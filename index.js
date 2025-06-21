@@ -25,14 +25,20 @@ const RepDeseaseMondel = require('./model/RepDesease')
 const MongoDBStore = require('connect-mongodb-session')(session);
 const emailRoutes = require("./routes/emailRoutes");
 const dotenv = require("dotenv");
+const fs = require("fs"); 
 //require('dotenv').config()
 //const image = require('./model/Images')
 const CoRegistrationMondel = require('./model/CoRegistration')
 const multer = require('multer')
 const { createServer } = require('node:http');
 const { Server } = require('socket.io');
-
 const port = process.env.PORT || 3000;
+ 
+
+
+
+
+
 
 const path= require('path');
 const { connect } = require('node:http2');
@@ -58,7 +64,7 @@ const io = new Server(server);
 app.use("/files", express.static("files"));
 app.use("/image",express.static("image"));
 app.use("/CardBottum",express.static("CardBottum"));
-app.use("/Cards",express.static("Cards"));
+// app.use("/Cards",express.static("Cards"));
 app.use("/Images", express.static("Images"));
 app.use("/ReserchPaper", express.static("ReserchPaper"));
 app.use("/ReserchProposal", express.static("ReserchProposal"));
@@ -85,6 +91,11 @@ app.use("/Guidlines", express.static("Guidlines"));
 app.use("/IRBPolicy", express.static("IRBPolicy"));
 app.use("/capacityB", express.static("capacityB"));
 
+app.use('/Cards', express.static(path.join(__dirname, 'Cards')));
+app.use("/BanerImage", express.static(path.join(__dirname, "BanerImage"))); // Create upload folder if not exists 
+const uploadFolder = "./BanerImage"; 
+if (!fs.existsSync(uploadFolder)) 
+  { fs.mkdirSync(uploadFolder); }
 //app.use(express.json())
 //app.use(express.urlencoded({extended:true}))
 app.use(bodyParser.json())
@@ -1061,7 +1072,7 @@ try{
 
 const Image = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "https://aacdmc.gov.et/BanerImage");
+    cb(null, uploadFolder);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -1243,7 +1254,7 @@ app.get("/", (req, res) => {
 ///////////////////////////multer attached file for email/////////////
 const Emailstorage = multer.diskStorage({
   destination:function(req, file, cb){
-      cb(null,('./image'));
+      cb(null,('./attached'));
   },
   Attachedfilename:function(req,file,cb){
       const name = Date.now()+'-'+file.originalname;
@@ -1252,6 +1263,12 @@ const Emailstorage = multer.diskStorage({
 });
 
 const attached = multer({storage: Emailstorage });
+app.post("/Esend", attached.single("file"), async(req, res) =>{
+  try{
+  const { Title,email,messages,Statua} = req.body;
+  //const fileName = req.file.filename;
+  const file= req.file;
+  console.log(Title,email, messages,file,Statua);
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: process.env.SMTP_PORT,
@@ -1261,26 +1278,28 @@ const transporter = nodemailer.createTransport({
     pass: process.env.SMTP_PASSWORD, // generated ethereal password
   },
 })
-app.post("/Esend", attached.single("file"), async(req, res) =>{
-  const { Title,email,messages,Statua} = req.body;
-  //const fileName = req.file.filename;
-  const file= req.file;
-  console.log(Title,email, messages,Statua,file);
+
 
   const mailOptions = {
     from: process.env.SMTP_MAIL,
     to: email,
     subject: Title,
     text: messages,
+    Statua:Statua,
     html: `<p>email:${email}</p><p>Subject:${Title}</p><p>messages: ${messages}</p><p>Statua: ${Statua}</p>`,
     attachments: [ 
           { filename: file.originalname, 
-            content: file.buffer, 
+            
           }, 
         ], 
     
   };
-  await transporter.sendMail(mailOptions)
+  await transporter.sendMail(mailOptions); 
+      res.status(200).send('Email sent successfully!'); 
+    } catch  (error) 
+    { res.status(500).send('Error sending email'); 
+      console.error(error); 
+    } 
 }); 
     
 
@@ -13278,9 +13297,818 @@ app.post("/CreatCards", Cardstorage.single("file"), async (req, res) => {
   }
 });
 
-app.get("/get-Cards", async (req, res) => {
+// app.get("/get-Cards", async (req, res) => {
+//   try {
+//     CardsMondel.find({}).then((data) => {
+//       res.send({ status: "ok", data: data });
+//     });
+//   } catch (error) {
+//     res.json({ status: error });
+//   }
+// });
+
+app.get('/get-Cards/:id', (req, res) => {
+  const id = req.params.id
+  CardsMondel.findById({_id: id})
+  .then(post => res.json(post))
+  .catch(err => console.log(err))
+})
+
+// app.put('/update/:id', (req, res) => {
+//   const id = req.params.id;
+//   CardsMondel.findByIdAndUpdate({_id: id}, {
+//       name: req.body.name,
+//       email: req.body.email,
+//       age: req.body.age
+//   }).then(user => res.json(user))
+//   .catch(err => res.json(err))
+// })
+
+
+//////Homepage Accredited/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const Accredited = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./Accredited");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Accredited");
+const AccreditedMondel = mongoose.model("Accredited");
+const Accreditedstorage = multer({ storage: Accredited });
+
+app.post("/Accredited", Accreditedstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const AccreditedTitle = req.body.AccreditedTitle;
+  const AccreditedDate = req.body.AccreditedDate;
+  const AccreditedfileName = req.file.filename;
   try {
-    CardsMondel.find({}).sort({ createdAt: -1 }).then((data) => {
+    await AccreditedMondel.create({AccreditedTitle:AccreditedTitle, AccreditedDate:AccreditedDate, pdf:AccreditedfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Accredited", async (req, res) => {
+  try {
+    AccreditedMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage EQA/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const EQA = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./EQA");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/EQA");
+const EQAMondel = mongoose.model("EQA");
+const EQAstorage = multer({ storage: EQA });
+
+app.post("/EQA", EQAstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const EQATitle = req.body.EQATitle;
+  const EQADate = req.body.EQADate;
+  const EQAfileName = req.file.filename;
+  try {
+    await EQAMondel.create({EQATitle:EQATitle, EQADate:EQADate, pdf:EQAfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-EQA", async (req, res) => {
+  try {
+    EQAMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage CPD/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const CPD = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./CPD");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/CPD");
+const CPDMondel = mongoose.model("CPD");
+const CPDstorage = multer({ storage: CPD });
+
+app.post("/CPD", CPDstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const CPDTitle = req.body.CPDTitle;
+  const CPDDate = req.body.CPDDate;
+  const CPDfileName = req.file.filename;
+  try {
+    await CPDMondel.create({CPDTitle:CPDTitle, CPDDate:CPDDate, pdf:CPDfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-CPD", async (req, res) => {
+  try {
+    CPDMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+
+//////Homepage SLIMTA/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const SLIMTA = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./SLIMTA");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/SLIMTA");
+const SLIMTAMondel = mongoose.model("SLIMTA");
+const SLIMTAstorage = multer({ storage: SLIMTA });
+
+app.post("/SLIMTA", SLIMTAstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const SLIMTATitle = req.body.SLIMTATitle;
+  const SLIMTADate = req.body.SLIMTADate;
+  const SLIMTAfileName = req.file.filename;
+  try {
+    await SLIMTAMondel.create({SLIMTATitle:SLIMTATitle, SLIMTADate:SLIMTADate, pdf:SLIMTAfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-SLIMTA", async (req, res) => {
+  try {
+    SLIMTAMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage Mentorship/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const Mentorship = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./Mentorship");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Mentorship");
+const MentorshipMondel = mongoose.model("Mentorship");
+const Mentorshipstorage = multer({ storage: Mentorship });
+
+app.post("/Mentorship", Mentorshipstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const MentorshipTitle = req.body.MentorshipTitle;
+  const MentorshipDate = req.body.MentorshipDate;
+  const MentorshipfileName = req.file.filename;
+  try {
+    await MentorshipMondel.create({MentorshipTitle:MentorshipTitle, MentorshipDate:MentorshipDate, pdf:MentorshipfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Mentorship", async (req, res) => {
+  try {
+    MentorshipMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage QualityIndicators/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const QualityIndicators = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./QualityIndicators");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/QualityIndicators");
+const QualityIndicatorsMondel = mongoose.model("QualityIndicators");
+const QualityIndicatorsstorage = multer({ storage: QualityIndicators });
+
+app.post("/QualityIndicators", QualityIndicatorsstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const QualityIndicatorsTitle = req.body.QualityIndicatorsTitle;
+  const QualityIndicatorsDate = req.body.QualityIndicatorsDate;
+  const QualityIndicatorsfileName = req.file.filename;
+  try {
+    await QualityIndicatorsMondel.create({QualityIndicatorsTitle:QualityIndicatorsTitle, QualityIndicatorsDate:QualityIndicatorsDate, pdf:QualityIndicatorsfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-QualityIndicator", async (req, res) => {
+  try {
+    QualityIndicatorsMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage Laboratory/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const Laboratory = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./Laboratory");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Laboratory");
+const LaboratoryMondel = mongoose.model("Laboratory");
+const Laboratorystorage = multer({ storage: Laboratory });
+
+app.post("/Laboratory", Laboratorystorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const LaboratoryTitle = req.body.LaboratoryTitle;
+  const LaboratoryDate = req.body.LaboratoryDate;
+  const LaboratoryfileName = req.file.filename;
+  try {
+    await LaboratoryMondel.create({LaboratoryTitle:LaboratoryTitle, LaboratoryDate:LaboratoryDate, pdf:LaboratoryfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Laboratory", async (req, res) => {
+  try {
+    LaboratoryMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+
+//////Homepage PolicyDoc/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const PolicyDoc = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./PolicyDoc");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/PolicyDoc");
+const PolicyDocMondel = mongoose.model("PolicyDoc");
+const PolicyDocstorage = multer({ storage: PolicyDoc });
+
+app.post("/PolicyDoc", PolicyDocstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const PolicyDocTitle = req.body.PolicyDocTitle;
+  const PolicyDocDate = req.body.PolicyDocDate;
+  const PolicyDocfileName = req.file.filename;
+  try {
+    await PolicyDocMondel.create({PolicyDocTitle:PolicyDocTitle, PolicyDocDate:PolicyDocDate, pdf:PolicyDocfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-PolicyDoc", async (req, res) => {
+  try {
+    PolicyDocMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage Referral_L/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  Referral = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./ Referral");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Referral");
+const  ReferralMondel = mongoose.model("Referral");
+const  Referralstorage = multer({ storage:  Referral });
+
+app.post("/Referral",  Referralstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  ReferralTitle = req.body. ReferralTitle;
+  const  ReferralDate = req.body. ReferralDate;
+  const  ReferralfileName = req.file.filename;
+  try {
+    await ReferralMondel.create({ ReferralTitle: ReferralTitle,  ReferralDate: ReferralDate, pdf: ReferralfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Referral", async (req, res) => {
+  try {
+    ReferralMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage Manuals/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  Manuals = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./ Manuals");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Manuals");
+const  ManualsMondel = mongoose.model("Manuals");
+const  Manualsstorage = multer({ storage:  Manuals });
+
+app.post("/Manuals",  Manualsstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  ManualsTitle = req.body. ManualsTitle;
+  const ManualsDate = req.body. ReferralDate;
+  const  ManualsfileName = req.file.filename;
+  try {
+    await ManualsMondel.create({ ManualsTitle: ManualsTitle,  ManualsDate: ManualsDate, pdf: ReferralfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Manuals", async (req, res) => {
+  try {
+    ManualsMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+
+//////Homepage Process/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  Process = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./Process");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Process");
+const  ProcessMondel = mongoose.model("Process");
+const  Processstorage = multer({ storage:  Process });
+
+app.post("/Process",  Processstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  ProcessTitle = req.body. ProcessTitle;
+  const ProcessDate = req.body. ProcessDate;
+  const  ProcessfileName = req.file.filename;
+  try {
+    await ProcessMondel.create({ ProcessTitle: ProcessTitle,  ProcessDate: ProcessDate, pdf: ProcessfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Process", async (req, res) => {
+  try {
+    ProcessMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage Procedures/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  Procedures = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./Procedures");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Procedures");
+const  ProceduresMondel = mongoose.model("Procedures");
+const  Proceduresstorage = multer({ storage:  Procedures });
+
+app.post("/Procedures",  Proceduresstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  ProceduresTitle = req.body. ProceduresTitle;
+  const ProceduresDate = req.body. ProceduresDate;
+  const  ProceduresfileName = req.file.filename;
+  try {
+    await ProceduresMondel.create({ ProceduresTitle: ProceduresTitle,  ProceduresDate: ProceduresDate, pdf: ProceduresfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Procedures", async (req, res) => {
+  try {
+    ProceduresMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+
+//////Homepage JobAid
+/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  JobAid = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./JobAid");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/JobAid");
+const  JobAidMondel = mongoose.model("JobAid");
+const  JobAidstorage = multer({ storage:  JobAid });
+
+app.post("/JobAids",  JobAidstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  JobAidTitle = req.body. JobAidTitle;
+  const JobAidDate = req.body. JobAidDate;
+  const  JobAidfileName = req.file.filename;
+  try {
+    await JobAidMondel.create({ JobAidTitle: JobAidTitle,  JobAidDate: JobAidDate, pdf: JobAidfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-JobAid", async (req, res) => {
+  try {
+    JobAidMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//////Homepage Checklists
+/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  Checklists = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./Checklists");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Checklists");
+const  ChecklistsMondel = mongoose.model("Checklists");
+const  Checkliststorage = multer({ storage:  Checklists });
+
+app.post("/Checklists",  Checkliststorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  ChecklistsTitle = req.body. ChecklistsTitle;
+  const ChecklistsDate = req.body. ChecklistsDate;
+  const  ChecklistsfileName = req.file.filename;
+  try {
+    await ChecklistsMondel.create({ ChecklistsTitle: ChecklistsTitle,  ChecklistsDate: ChecklistsDate, pdf: ChecklistsfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Checklists", async (req, res) => {
+  try {
+    ChecklistsMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+
+//////Homepage Formats
+/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  Formats = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./Formats");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Formats");
+const  FormatsMondel = mongoose.model("Formats");
+const  Formatstorage = multer({ storage:  Formats });
+
+app.post("/Formats",  Formatstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  FormatsTitle = req.body. FormatsTitle;
+  const FormatsDate = req.body. FormatsDate;
+  const  FormatsfileName = req.file.filename;
+  try {
+    await FormatsMondel.create({ FormatsTitle: FormatsTitle,  FormatsDate: FormatsDate, pdf: FormatsfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Formats", async (req, res) => {
+  try {
+    FormatsMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+
+//////Homepage LatestUpdate
+/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  LatestUpdate = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./LatestUpdate");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/LatestUpdate");
+const  LatestUpdateMondel = mongoose.model("LatestUpdate");
+const  LatestUpdatetorage = multer({ storage:  LatestUpdate });
+
+app.post("/LatestUpdate",  LatestUpdatetorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  LatestUpdateTitle = req.body. LatestUpdateTitle;
+  const LatestUpdateDate = req.body. LatestUpdateDate;
+  const  LatestUpdatefileName = req.file.filename;
+  try {
+    await LatestUpdateMondel.create({ LatestUpdateTitle: LatestUpdateTitle,  LatestUpdateDate: LatestUpdateDate, pdf: LatestUpdatefileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-LatestUpdate", async (req, res) => {
+  try {
+    LatestUpdateMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+
+//////Homepage Feedback
+/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  Feedback = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./Feedback");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/Feedback");
+const  FeedbackMondel = mongoose.model("Feedback");
+const  Feedbacktorage = multer({ storage:  Feedback });
+
+app.post("/Feedback",  Feedbacktorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  FeedbackTitle = req.body. FeedbackTitle;
+  const FeedbackDate = req.body. FeedbackDate;
+  const  FeedbackfileName = req.file.filename;
+  try {
+    await FeedbackMondel.create({ FeedbackTitle: FeedbackTitle,  FeedbackDate: FeedbackDate, pdf: FeedbackfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Feedback", async (req, res) => {
+  try {
+    FeedbackMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+
+//////Homepage JDescriptions
+/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  JDescriptions = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./JDescriptions");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/JDescriptions");
+const  JDescriptionsMondel = mongoose.model("JDescriptions");
+const  JDescriptionstorage = multer({ storage:  JDescriptions });
+
+app.post("/JDescriptions",  JDescriptionstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  JDescriptionsTitle = req.body. JDescriptionsTitle;
+  const JDescriptionsDate = req.body. JDescriptionsDate;
+  const  JDescriptionsfileName = req.file.filename;
+  try {
+    await JDescriptionsMondel.create({ JDescriptionsTitle: JDescriptionsTitle,  JDescriptionsDate: JDescriptionsDate, pdf: JDescriptionsfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-JDescriptions", async (req, res) => {
+  try {
+    JDescriptionsMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+//////Homepage LabGuidlines/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+
+const  LabGuidlines = multer.diskStorage({
+  destination: function (req, file, cb) { 
+    cb(null,"./LabGuidlines");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null, uniqueSuffix + file.originalname);
+  },
+});
+
+require("./model/LabGuidlines");
+const  LabGuidlinesMondel = mongoose.model("LabGuidlines");
+const  LabGuidlinesstorage = multer({ storage:  LabGuidlines });
+
+app.post("/LabGuidlines",  LabGuidlinesstorage.single("file"), async (req, res) => {
+  console.log(req.file);
+  const  LabGuidlinesTitle = req.body. LabGuidlinesTitle;
+  const  LabGuidlinesfileName = req.file.filename;
+  try {
+    await ReferralMondel.create({LabGuidlinesTitle: LabGuidlinesTitle, pdf: LabGuidlinesfileName});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-LabGuidlines", async (req, res) => {
+  try {
+    LabGuidlinesMondel.find({}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13292,7 +14120,7 @@ app.get("/get-Cards", async (req, res) => {
 app.get('/fetching-Cards', async(req, res) =>{
     
   //ResearchMondel.find()
-  const allUser = await CardsMondel.find({});
+  const allUser = await CardsMondel.find({}).sort({createdAt: -1});
 const page = parseInt(req.query.page)
 const limit = parseInt(req.query.limit)
 
@@ -13355,7 +14183,7 @@ app.post("/CreatCardBottum", CardBottumstorage.single("file"), async (req, res) 
 
 app.get("/get-CardBottum", async (req, res) => {
   try {
-    CardBottumMondel.find({}).then((data) => {
+    CardBottumMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -13598,6 +14426,10 @@ app.get('/EVENTSGet',(req, res) =>{
 }).catch(err => res.json(err))
 
 })*/
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/src', 'index.html'));
+});
+
 io.on('connection', (socket) => {
   console.log('a user connected');
 });
