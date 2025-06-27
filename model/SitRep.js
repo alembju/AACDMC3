@@ -8,6 +8,9 @@ const SitRepScehma = new mongoose.Schema(
     EPIWeek: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "SitRep"
   }

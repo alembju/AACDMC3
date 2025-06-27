@@ -7,6 +7,9 @@ const ChecklistsScehma = new mongoose.Schema(
     ChecklistsDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Checklists"
   }

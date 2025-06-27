@@ -7,6 +7,9 @@ const ReferralScehma = new mongoose.Schema(
     ReferralDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Referral"
   }

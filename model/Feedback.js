@@ -7,6 +7,9 @@ const FeedbackScehma = new mongoose.Schema(
     FeedbackDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Feedback"
   }

@@ -7,6 +7,9 @@ const FormatsScehma = new mongoose.Schema(
     FormatsDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Formats"
   }

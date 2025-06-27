@@ -7,6 +7,9 @@ const  QualityIndicatorsScehma = new mongoose.Schema(
     QualityIndicatorsDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "QualityIndicators"
   }

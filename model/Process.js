@@ -7,6 +7,9 @@ const ProcessScehma = new mongoose.Schema(
     ProcessDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Process"
   }

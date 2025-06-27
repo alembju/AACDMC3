@@ -7,6 +7,9 @@ const SLIMTAScehma = new mongoose.Schema(
     SLIMTADate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "SLIMTA"
   }

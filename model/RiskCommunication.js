@@ -8,6 +8,9 @@ const RiskCommScehma = new mongoose.Schema(
     Prevation: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "RiskCommunication"
   }

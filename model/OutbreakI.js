@@ -7,6 +7,9 @@ const OutbreakIScehma = new mongoose.Schema(
     ReportingDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "OutbreakI"
   }

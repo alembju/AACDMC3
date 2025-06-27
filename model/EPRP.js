@@ -6,6 +6,9 @@ const EPRPScehma = new mongoose.Schema(
     VRAMSource: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "EPRP"
   }

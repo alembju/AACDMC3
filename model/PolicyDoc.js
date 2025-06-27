@@ -7,6 +7,9 @@ const PolicyDocScehma = new mongoose.Schema(
     PolicyDocDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "PolicyDoc"
   }

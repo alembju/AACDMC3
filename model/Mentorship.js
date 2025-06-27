@@ -7,6 +7,9 @@ const MentorshipScehma = new mongoose.Schema(
     MentorshipDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Mentorship"
   }

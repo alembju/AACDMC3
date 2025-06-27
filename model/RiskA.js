@@ -9,6 +9,9 @@ const RiskAScehma = new mongoose.Schema(
     RAWoreda: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "RiskA"
   }

@@ -7,6 +7,9 @@ const AccreditedScehma = new mongoose.Schema(
     AccreditedDate: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Accredited"
   }

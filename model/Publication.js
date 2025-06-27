@@ -7,6 +7,9 @@ const PublicationScehma = new mongoose.Schema(
     pdf: String,
   },
   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
+  {
     collection: "Publication"
   }
 );

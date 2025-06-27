@@ -275500,3 +275500,16 @@
 20250621	12:18:24	8cf6e7e7-b56e-4db6-9e3f-2c4ebd3c4028	POST	http://localhost:5173	/Esend
 20250621	13:00:03	4442cfa2-450f-4873-83b2-757538b2d053	POST	http://localhost:5173	/posts/68443a64da91b0c3326688d8/comments
 20250621	13:06:56	1026d9be-96df-46f5-a675-cb28f74ff736	POST	http://localhost:5173	/posts/68457b415c85d01b0a56915b/comments
+20250622	14:22:24	bd45356d-86e4-437e-895e-16190387884d	POST	http://localhost:5173	/EQA
+20250622	14:31:58	dcc3524c-d342-4d4d-8fa7-dbbf1ecb1a3a	POST	http://localhost:5173	/CPD
+20250622	14:52:26	1f0bfc4f-8d18-4f8a-8909-33e30d62e64f	POST	http://localhost:5173	/Referral
+20250622	15:00:46	19c5bfc6-9e83-4b98-b058-43ad80c511b4	POST	http://localhost:5173	/Referral
+20250622	15:09:48	beff67bd-c565-477b-a1b9-1636e4b601a6	POST	http://localhost:5173	/LabGuidlines
+20250622	15:16:40	a06c0b68-4f99-4cb8-9f2b-fcadf055200d	POST	http://localhost:5173	/LabGuidlines
+20250622	15:19:55	e1dc9448-4f75-4559-a329-01fa5f84ebbd	POST	http://localhost:5173	/LabGuidlines
+20250622	15:25:11	11f6904d-f39c-453d-9229-5f2f7b4cfa46	POST	http://localhost:5173	/LabGuidlines
+20250622	15:37:03	5031730b-606c-48f8-ab59-28f76af920ad	POST	http://localhost:5173	/Manuals
+20250626	13:28:36	f945fa1b-930a-40d1-803d-847436e3a4fc	POST	http://localhost:5173	/MainImage
+20250626	13:38:02	16850cac-1212-4fc5-9dbf-1f9dfe1328ae	POST	http://localhost:5173	/MainImage
+20250626	13:40:22	08f0835f-6531-433b-ab24-4ff273329dc7	POST	http://localhost:5173	/MainImage
+20250626	13:42:29	2e632262-d1af-4321-be72-5c7eb57aecd9	POST	http://localhost:5173	/MainImage

@@ -7,6 +7,9 @@ const BulletinScehma = new mongoose.Schema(
     BullitenDate: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Bulletin"
   }

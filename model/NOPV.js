@@ -5,6 +5,9 @@ const NOPVScehma = new mongoose.Schema(
     NOPVTitle: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "NOPV"
   }

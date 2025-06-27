@@ -7,6 +7,9 @@ const capacityBScehma = new mongoose.Schema(
     TCertification: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "CapacityBuilding"
   }

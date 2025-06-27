@@ -7,6 +7,9 @@ const LaboratoryScehma = new mongoose.Schema(
     LaboratoryDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "Laboratory"
   }

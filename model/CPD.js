@@ -7,6 +7,9 @@ const CPDScehma = new mongoose.Schema(
     CPDDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "CPD"
   }

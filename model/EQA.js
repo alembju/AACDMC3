@@ -7,6 +7,9 @@ const EQAScehma = new mongoose.Schema(
     EQADate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "EQA"
   }

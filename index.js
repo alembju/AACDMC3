@@ -92,11 +92,13 @@ app.use("/IRBPolicy", express.static("IRBPolicy"));
 app.use("/capacityB", express.static("capacityB"));
 
 app.use('/Cards', express.static(path.join(__dirname, 'Cards')));
-app.use("/BanerImage", express.static(path.join(__dirname, "BanerImage"))); // Create upload folder if not exists 
-const uploadFolder = "./BanerImage"; 
-if (!fs.existsSync(uploadFolder)) 
-  { fs.mkdirSync(uploadFolder); }
-//app.use(express.json())
+// app.use('/BanerImage', express.static('/var/www/vhosts/https://aacdmc.gov.et/httpdocs/BanerImage'));
+app.use('/BanerImage', express.static(path.join(__dirname, '../../httpdocs/BanerImage/')));
+// app.use("/BanerImage", express.static(path.join(__dirname, '../../httpdocs/BanerImage/'))); // Create upload folder if not exists 
+// const uploadFolder = "./BanerImage"; 
+// if (!fs.existsSync(uploadFolder)) 
+//   { fs.mkdirSync(uploadFolder); }
+// //app.use(express.json())
 //app.use(express.urlencoded({extended:true}))
 app.use(bodyParser.json())
 
@@ -1072,20 +1074,24 @@ try{
 
 const Image = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadFolder);
+    cb(null,'../https://aacdmc.gov.et/httpdocs/BanerImage/');
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+   
+    cb(null,  Date.now() + path.extname(file.originalname));
   },
 });
+// const upload = multer({ 
+//   storage: storage,
+//   limits: { fileSize: 10000000 } // 10MB limit
+// });
 
 require("./model/imageDetails");
 
 const ImagesMondel  = mongoose.model("ImageDetails" )
-const uploadImag = multer({ storage: Image });
+const uploadImag = multer({ storage: Image });// limits: { fileSize: 10000000 }  10MB limit
 
-app.post("/BanerImage", uploadImag.single("file"), async (req, res) => {
+app.post("/MainImage", uploadImag.single("file"), async (req, res) => {
   console.log(req.file);
   const Title = req.body.Title;
   const Description = req.body.Description;
@@ -12686,7 +12692,7 @@ app.post("/WeekelyBuletin", BulletinStorage.single("file"), async (req, res) => 
 
 app.get("/get-Bulliten", async (req, res) => {
   try {
-    BulletinMondel.find({}).then((data) => {
+    BulletinMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -12725,7 +12731,7 @@ app.post("/SUpdate", SUpdateStorage.single("file"), async (req, res) => {
 
 app.get("/get-SUpdate", async (req, res) => {
   try {
-    SUpdateMondel.find({}).then((data) => {
+    SUpdateMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -12764,7 +12770,7 @@ app.post("/OutbreakInvestigation", OutbreakIStorage.single("file"), async (req, 
 
 app.get("/get-OutbreakI", async (req, res) => {
   try {
-    OutbreakIMondel.find({}).then((data) => {
+    OutbreakIMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -12857,7 +12863,7 @@ app.post("/NOPVDocument", NOPVStorage.single("file"), async (req, res) => {
 
 app.get("/get-NOPV", async (req, res) => {
   try {
-    NOPVMondel.find({}).then((data) => {
+    NOPVMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -12895,7 +12901,7 @@ app.post("/VRAMDocument", VRAMStorage.single("file"), async (req, res) => {
 
 app.get("/get-VRAM", async (req, res) => {
   try {
-    VRAMMondel.find({}).then((data) => {
+    VRAMMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -12934,7 +12940,7 @@ app.post("/EPRPDocument", EPRPStorage.single("file"), async (req, res) => {
 
 app.get("/get-EPRP", async (req, res) => {
   try {
-    EPRPMondel.find({}).then((data) => {
+    EPRPMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -12976,7 +12982,7 @@ app.post("/RiskA", RiskAStorage.single("file"), async (req, res) => {
 
 app.get("/get-RiskA", async (req, res) => {
   try {
-    RiskAMondel.find({}).then((data) => {
+    RiskAMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -13014,7 +13020,7 @@ app.post("/IARDocument", IARStorage.single("file"), async (req, res) => {
 
 app.get("/get-IAR", async (req, res) => {
   try {
-    IARMondel.find({}).then((data) => {
+    IARMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -13053,7 +13059,7 @@ app.post("/Publication", PublicationStorage.single("file"), async (req, res) => 
 
 app.get("/get-Publication", async (req, res) => {
   try {
-    PublicationMondel.find({}).then((data) => {
+    PublicationMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -13094,7 +13100,7 @@ app.post("/ETraining", ETrainingStorage.single("file"), async (req, res) => {
 
 app.get("/get-ETraining", async (req, res) => {
   try {
-    ETrainingMondel.find({}).then((data) => {
+    ETrainingMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -13135,7 +13141,7 @@ app.post("/SitRep", SitRepStorage.single("file"), async (req, res) => {
 
 app.get("/get-SitRep", async (req, res) => {
   try {
-    SitRepMondel.find({}).then((data) => {
+    SitRepMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -13259,7 +13265,7 @@ app.post("/Suppervision", SuppervisionStorage.single("file"), async (req, res) =
 
 app.get("/get-Suppervision", async (req, res) => {
   try {
-    SuppervisionMondel.find({}).then((data) => {
+    SuppervisionMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -13297,15 +13303,12 @@ app.post("/CreatCards", Cardstorage.single("file"), async (req, res) => {
   }
 });
 
-// app.get("/get-Cards", async (req, res) => {
-//   try {
-//     CardsMondel.find({}).then((data) => {
-//       res.send({ status: "ok", data: data });
-//     });
-//   } catch (error) {
-//     res.json({ status: error });
-//   }
-// });
+app.get('/get-BottumCards/:id', (req, res) => {
+  const id = req.params.id
+  CardBottumMondel.findById({_id: id})
+  .then(post => res.json(post))
+  .catch(err => console.log(err))
+})
 
 app.get('/get-Cards/:id', (req, res) => {
   const id = req.params.id
@@ -13358,7 +13361,7 @@ app.post("/Accredited", Accreditedstorage.single("file"), async (req, res) => {
 
 app.get("/get-Accredited", async (req, res) => {
   try {
-    AccreditedMondel.find({}).then((data) => {
+    AccreditedMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13399,7 +13402,7 @@ app.post("/EQA", EQAstorage.single("file"), async (req, res) => {
 
 app.get("/get-EQA", async (req, res) => {
   try {
-    EQAMondel.find({}).then((data) => {
+    EQAMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13440,7 +13443,7 @@ app.post("/CPD", CPDstorage.single("file"), async (req, res) => {
 
 app.get("/get-CPD", async (req, res) => {
   try {
-    CPDMondel.find({}).then((data) => {
+    CPDMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13482,7 +13485,7 @@ app.post("/SLIMTA", SLIMTAstorage.single("file"), async (req, res) => {
 
 app.get("/get-SLIMTA", async (req, res) => {
   try {
-    SLIMTAMondel.find({}).then((data) => {
+    SLIMTAMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13523,7 +13526,7 @@ app.post("/Mentorship", Mentorshipstorage.single("file"), async (req, res) => {
 
 app.get("/get-Mentorship", async (req, res) => {
   try {
-    MentorshipMondel.find({}).then((data) => {
+    MentorshipMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13564,7 +13567,7 @@ app.post("/QualityIndicators", QualityIndicatorsstorage.single("file"), async (r
 
 app.get("/get-QualityIndicator", async (req, res) => {
   try {
-    QualityIndicatorsMondel.find({}).then((data) => {
+    QualityIndicatorsMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13605,7 +13608,7 @@ app.post("/Laboratory", Laboratorystorage.single("file"), async (req, res) => {
 
 app.get("/get-Laboratory", async (req, res) => {
   try {
-    LaboratoryMondel.find({}).then((data) => {
+    LaboratoryMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13647,7 +13650,7 @@ app.post("/PolicyDoc", PolicyDocstorage.single("file"), async (req, res) => {
 
 app.get("/get-PolicyDoc", async (req, res) => {
   try {
-    PolicyDocMondel.find({}).then((data) => {
+    PolicyDocMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13661,7 +13664,7 @@ app.get("/get-PolicyDoc", async (req, res) => {
 
 const  Referral = multer.diskStorage({
   destination: function (req, file, cb) { 
-    cb(null,"./ Referral");
+    cb(null,"./Referral");
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -13688,7 +13691,7 @@ app.post("/Referral",  Referralstorage.single("file"), async (req, res) => {
 
 app.get("/get-Referral", async (req, res) => {
   try {
-    ReferralMondel.find({}).then((data) => {
+    ReferralMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13702,7 +13705,7 @@ app.get("/get-Referral", async (req, res) => {
 
 const  Manuals = multer.diskStorage({
   destination: function (req, file, cb) { 
-    cb(null,"./ Manuals");
+    cb(null,"./Manuals");
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now();
@@ -13717,10 +13720,10 @@ const  Manualsstorage = multer({ storage:  Manuals });
 app.post("/Manuals",  Manualsstorage.single("file"), async (req, res) => {
   console.log(req.file);
   const  ManualsTitle = req.body. ManualsTitle;
-  const ManualsDate = req.body. ReferralDate;
+  const ManualsDate = req.body. ManualsDate;
   const  ManualsfileName = req.file.filename;
   try {
-    await ManualsMondel.create({ ManualsTitle: ManualsTitle,  ManualsDate: ManualsDate, pdf: ReferralfileName});
+    await ManualsMondel.create({ ManualsTitle: ManualsTitle,  ManualsDate: ManualsDate, pdf: ManualsfileName});
     res.send({ status: "ok" });
   } catch (error) {
     res.json({ status: error });
@@ -13729,7 +13732,7 @@ app.post("/Manuals",  Manualsstorage.single("file"), async (req, res) => {
 
 app.get("/get-Manuals", async (req, res) => {
   try {
-    ManualsMondel.find({}).then((data) => {
+    ManualsMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13771,7 +13774,7 @@ app.post("/Process",  Processstorage.single("file"), async (req, res) => {
 
 app.get("/get-Process", async (req, res) => {
   try {
-    ProcessMondel.find({}).then((data) => {
+    ProcessMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13812,7 +13815,7 @@ app.post("/Procedures",  Proceduresstorage.single("file"), async (req, res) => {
 
 app.get("/get-Procedures", async (req, res) => {
   try {
-    ProceduresMondel.find({}).then((data) => {
+    ProceduresMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13855,7 +13858,7 @@ app.post("/JobAids",  JobAidstorage.single("file"), async (req, res) => {
 
 app.get("/get-JobAid", async (req, res) => {
   try {
-    JobAidMondel.find({}).then((data) => {
+    JobAidMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13897,7 +13900,7 @@ app.post("/Checklists",  Checkliststorage.single("file"), async (req, res) => {
 
 app.get("/get-Checklists", async (req, res) => {
   try {
-    ChecklistsMondel.find({}).then((data) => {
+    ChecklistsMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13940,7 +13943,7 @@ app.post("/Formats",  Formatstorage.single("file"), async (req, res) => {
 
 app.get("/get-Formats", async (req, res) => {
   try {
-    FormatsMondel.find({}).then((data) => {
+    FormatsMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -13983,7 +13986,7 @@ app.post("/LatestUpdate",  LatestUpdatetorage.single("file"), async (req, res) =
 
 app.get("/get-LatestUpdate", async (req, res) => {
   try {
-    LatestUpdateMondel.find({}).then((data) => {
+    LatestUpdateMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -14026,7 +14029,7 @@ app.post("/Feedback",  Feedbacktorage.single("file"), async (req, res) => {
 
 app.get("/get-Feedback", async (req, res) => {
   try {
-    FeedbackMondel.find({}).then((data) => {
+    FeedbackMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -14069,7 +14072,7 @@ app.post("/JDescriptions",  JDescriptionstorage.single("file"), async (req, res)
 
 app.get("/get-JDescriptions", async (req, res) => {
   try {
-    JDescriptionsMondel.find({}).then((data) => {
+    JDescriptionsMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -14108,7 +14111,7 @@ app.post("/LabGuidlines",  LabGuidlinesstorage.single("file"), async (req, res) 
 
 app.get("/get-LabGuidlines", async (req, res) => {
   try {
-    LabGuidlinesMondel.find({}).then((data) => {
+    LabGuidlinesMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -14170,9 +14173,10 @@ app.post("/CreatCardBottum", CardBottumstorage.single("file"), async (req, res) 
   console.log(req.file);
   const Bottumname = req.body.Bottumname;
   const Bottumdescription = req.body.Bottumdescription;
+  const BottumDetail = req.body.BottumDetail;
   const BottumCardsfileName = req.file.filename;
   try {
-    await CardBottumMondel.create({ Bottumname: Bottumname,Bottumdescription: Bottumdescription,pdf:BottumCardsfileName});
+    await CardBottumMondel.create({ Bottumname: Bottumname,Bottumdescription: Bottumdescription,BottumDetail:BottumDetail,pdf:BottumCardsfileName});
     res.send({ status: "ok" });
   } catch (error) {
     res.json({ status: error });
@@ -14239,7 +14243,7 @@ app.get('/RiskCommunication/:id', (req, res) => {
 
 app.get("/RiskComm", async (req, res) => {
   try {
-    RiskCommMondel.find({}).then((data) => {
+    RiskCommMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -14278,7 +14282,7 @@ app.post("/Guidelines", Guidlinesstorage.single("file"), async (req, res) => {
 
 app.get("/get-Guidlines", async (req, res) => {
   try {
-    GuidlinesMondel.find({}).then((data) => {
+    GuidlinesMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -14317,7 +14321,7 @@ app.post("/IRBPolicy", IRBPolicystorage.single("file"), async (req, res) => {
 
 app.get("/get-IRBPolicy", async (req, res) => {
   try {
-    IRBPolicyMondel.find({}).then((data) => {
+    IRBPolicyMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -14355,7 +14359,7 @@ app.post("/capacityB", capacityBupload.single("file"), async (req, res) => {
 
 app.get("/get-capacityB", async (req, res) => {
   try {
-    capacityBMondel.find({}).then((data) => {
+    capacityBMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}

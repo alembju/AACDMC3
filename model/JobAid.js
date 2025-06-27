@@ -6,6 +6,9 @@ const JobAidScehma = new mongoose.Schema(
     JobAidDate: Date,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "JobAid"
   }

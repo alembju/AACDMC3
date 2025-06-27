@@ -6,6 +6,9 @@ const ActiveSearchScehma = new mongoose.Schema(
     Abstract: String,
     pdf: String,
   },
+   {
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+},
   {
     collection: "IAR"
   }
