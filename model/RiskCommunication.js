@@ -1,19 +1,35 @@
 const mongoose = require("mongoose");
 
-const RiskCommScehma = new mongoose.Schema(
-  {
-    RTitle: String,
-    Defination: String,
-    Transmition: String,
-    Prevation: String,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+// const RiskCommScehma = new mongoose.Schema(
+//   {
+//     RTitle: String,
+//     Defination: String,
+//     Transmition: String,
+//     Prevation: String,
+//     pdf: String,
+//   },
+//    {
+//   timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+// },
+//   {
+//     collection: "RiskCommunication"
+//   }
+// );
+
+// mongoose.model("RiskCommunication", RiskCommScehma);
+
+const RiskCommScehma = new mongoose.Schema({
+  RTitle: String,
+  Defination: String,
+  Transmition: String,
+  Prevation: String,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "RiskCommunication"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
 
-mongoose.model("RiskCommunication", RiskCommScehma);
+module.exports = mongoose.model('RiskCommunication', RiskCommScehma);

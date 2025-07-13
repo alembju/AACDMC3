@@ -1,18 +1,14 @@
 const mongoose = require("mongoose");
 
-const EQAScehma = new mongoose.Schema(
-  {
- 
-    EQATitle: String,
-    EQADate: Date,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const EQAScehma = new mongoose.Schema({
+  EQATitle: String,
+  EQADate: Date,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "EQA"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("EQA",EQAScehma);
+module.exports = mongoose.model('EQA', EQAScehma);

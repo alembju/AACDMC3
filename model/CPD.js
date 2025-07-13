@@ -1,18 +1,14 @@
 const mongoose = require("mongoose");
 
-const CPDScehma = new mongoose.Schema(
-  {
- 
-    CPDTitle: String,
-    CPDDate: Date,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const CPDScehma = new mongoose.Schema({
+  CPDTitle: String,
+  CPDDate: Date,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "CPD"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("CPD",CPDScehma);
+module.exports = mongoose.model('CPD', CPDScehma);

@@ -1,11 +1,11 @@
 const mongoose = require("mongoose");
 
-const ImageDetailsScehma= new mongoose.Schema({
+const ImageDetailsScehma = new mongoose.Schema({
   Title: String,
   Description: String,
-  pdf: String,
-  },
+  filename:String,
+  public_id:String,
+  imgUrl:String
+});
 
-  { collection: "ImageDetails" }
-);
- mongoose.model("ImageDetails" , ImageDetailsScehma)
+module.exports = mongoose.model('ImageDetails', ImageDetailsScehma);

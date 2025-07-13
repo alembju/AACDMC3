@@ -1,18 +1,14 @@
 const mongoose = require("mongoose");
 
-const AccreditedScehma = new mongoose.Schema(
-  {
- 
-    AccreditedTitle: String,
-    AccreditedDate: String,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const AccreditedScehma = new mongoose.Schema({
+  AccreditedTitle: String,
+  AccreditedDate: String,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "Accredited"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("Accredited",AccreditedScehma);
+module.exports = mongoose.model('Accredited', AccreditedScehma);

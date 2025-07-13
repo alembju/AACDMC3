@@ -1,17 +1,13 @@
 const mongoose = require("mongoose");
 
-const LabGuidlinesScehma = new mongoose.Schema(
-  {
- 
-    LabGuidlinesTitle: String,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const LabGuidlinesScehma = new mongoose.Schema({
+  LabGuidlinesTitle: String,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "LabGuidlines"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("LabGuidlines",LabGuidlinesScehma);
+module.exports = mongoose.model('LabGuidlines', LabGuidlinesScehma);

@@ -1,18 +1,14 @@
 const mongoose = require("mongoose");
 
-const  QualityIndicatorsScehma = new mongoose.Schema(
-  {
- 
-    QualityIndicatorsTitle: String,
-    QualityIndicatorsDate: Date,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const QualityIndicatorsScehma = new mongoose.Schema({
+  QualityIndicatorsTitle: String,
+  QualityIndicatorsDate: Date,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "QualityIndicators"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("QualityIndicators", QualityIndicatorsScehma);
+module.exports = mongoose.model('QualityIndicators', QualityIndicatorsScehma);

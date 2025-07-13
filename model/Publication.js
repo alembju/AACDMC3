@@ -1,17 +1,14 @@
 const mongoose = require("mongoose");
 
-const PublicationScehma = new mongoose.Schema(
-  {
-    PublicationTitle: String,
-    PublicationAbstract: String,
-    pdf: String,
-  },
-  {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const PublicationScehma = new mongoose.Schema({
+  PublicationTitle: String,
+  PublicationAbstract: String,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "Publication"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("Publication", PublicationScehma);
+module.exports = mongoose.model('Publication', PublicationScehma);

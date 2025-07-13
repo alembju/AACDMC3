@@ -1,18 +1,14 @@
 const mongoose = require("mongoose");
 
-const LatestUpdateScehma = new mongoose.Schema(
-  {
- 
-    LatestUpdateTitle: String,
-    LatestUpdateDate: Date,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const LatestUpdateScehma = new mongoose.Schema({
+  LatestUpdateTitle: String,
+  LatestUpdateDate: Date,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "LatestUpdate"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("LatestUpdate",LatestUpdateScehma);
+module.exports = mongoose.model('LatestUpdate', LatestUpdateScehma);

@@ -13,13 +13,13 @@ const ImagesDescriptionMondel = require('./model/ImageDescription')
 const HealthFacilityMondel =require('./model/HealthFacilityinfo')
 //const User = require('./model/LoginModel')
 const session = require('express-session')
-//const imageModel = require('./model/Image.model')
+const ImagesMondel = require('./model/imageDetails')
 //const RegisterMondel = require('./model/Register')
 //const MeaselesMondel = require('./model/Measeles')
 const NewsFeedMondel = require('./model/NewsFeedMondel')
 //const ResearchMondel = require('./model/Research')
 //const IRBMondel = require('./model/IRBUpload')
-//const ImagesTMondel = require('./model/imageDetails')
+// const ImagesTMondel = require('./model/imageDetails')
 const EVENTSMondel = require('./model/Events')
 const RepDeseaseMondel = require('./model/RepDesease')
 const MongoDBStore = require('connect-mongodb-session')(session);
@@ -34,6 +34,8 @@ const { createServer } = require('node:http');
 const { Server } = require('socket.io');
 const port = process.env.PORT || 3000;
  
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 
 
@@ -53,6 +55,11 @@ const corsOptions = {
 
 const app = express();
 app.use(cors())
+//Enable CORS for frontend
+// app.use(cors({
+//   origin: 'http://localhost:3000', // React app URL
+//   methods: ['GET', 'POST'],
+// }));
 app.use(logger);
 app.use(express.json({limit:'500mb'}));
 //app.use(bodyParser.urlencoded({limit:'50mb', extended: true}))
@@ -92,8 +99,9 @@ app.use("/IRBPolicy", express.static("IRBPolicy"));
 app.use("/capacityB", express.static("capacityB"));
 
 app.use('/Cards', express.static(path.join(__dirname, 'Cards')));
-// app.use('/BanerImage', express.static('/var/www/vhosts/https://aacdmc.gov.et/httpdocs/BanerImage'));
-app.use('/BanerImage', express.static(path.join(__dirname, '../../httpdocs/BanerImage/')));
+
+ app.use(express.static('BanerImage'));
+// app.use('/BanerImage', express.static(path.join(__dirname, 'BanerImage')));
 // app.use("/BanerImage", express.static(path.join(__dirname, '../../httpdocs/BanerImage/'))); // Create upload folder if not exists 
 // const uploadFolder = "./BanerImage"; 
 // if (!fs.existsSync(uploadFolder)) 
@@ -105,7 +113,7 @@ app.use(bodyParser.json())
 //const URI = ("mongodb+srv://AACDMC:Alem%400913629813;@cluster0.en5lj.mongodb.net//image?retryWrites=true&w=majority&appName=Cluster0")
 // console.log(process.env.MONGO_URL)
   //const MONGO_URL = process.env.MONGO_URL ;
- mongoose.connect(process.env.MONGO_URL)
+ mongoose.connect(process.env.MONGO_URL , { useNewUrlParser: true, useUnifiedTopology: true })
 //mongoose.connect("")
 // async function Connect() {
 //   try{
@@ -1072,37 +1080,127 @@ try{
 })*/
 
 
-const Image = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null,'../https://aacdmc.gov.et/httpdocs/BanerImage/');
-  },
-  filename: function (req, file, cb) {
-   
-    cb(null,  Date.now() + path.extname(file.originalname));
-  },
-});
-// const upload = multer({ 
-//   storage: storage,
-//   limits: { fileSize: 10000000 } // 10MB limit
+// const Image = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null,'./BanerImage');
+//   },
+//   filename: function (req, file, cb) {
+//     cb(null,  Date.now() + path.extname(file.originalname));
+//   },
+// });
+// // const upload = multer({ 
+// //   storage: storage,
+// //   limits: { fileSize: 10000000 } // 10MB limit
+// // });
+
+// // require("./model/imageDetails");
+
+//  //const ImagesMondel  = mongoose.model("ImageDetails" )
+// const uploadImag = multer({ storage: Image });// limits: { fileSize: 10000000 }  10MB limit
+// 🔧 Configure Cloudinary
+// cloudinary.config({
+//   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+//   api_key: process.env.CLOUDINARY_API_KEY,
+//   api_secret: process.env.CLOUDINARY_API_SECRET,
 // });
 
-require("./model/imageDetails");
+const Image = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
 
-const ImagesMondel  = mongoose.model("ImageDetails" )
-const uploadImag = multer({ storage: Image });// limits: { fileSize: 10000000 }  10MB limit
+
+// require("./model/imageDetails");
+// const ImagesMondel = mongoose.model("imageDetails");
+const uploadImag = multer({ storage: Image });
 
 app.post("/MainImage", uploadImag.single("file"), async (req, res) => {
-  console.log(req.file);
-  const Title = req.body.Title;
-  const Description = req.body.Description;
-  const fileName = req.file.filename;
-  try {
-    await ImagesMondel.create({Title:Title,Description:Description,pdf: fileName});
-    res.send({ status: "ok" });
-  } catch (error) {
-    res.json({ status: error });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const { Title, Description } = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryResponse = await cloudinary.uploader.upload(file, {
+    folder: "BanerImage",
+  });
+
+  const savetoDb = await ImagesMondel.create({
+    Title,
+    Description,
+    filename:originalname,
+    public_id: cloudinaryResponse.public_id,
+    imgUrl: cloudinaryResponse.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryResponse.secure_url });
+  console.log("cloudinary response ", cloudinaryResponse,savetoDb);
+  } catch (err) {
+    res.status(500).json({ error: 'Upload failed' });
   }
 });
+
+
+// 📦 Configure Multer to use Cloudinary storage
+// const Image = new CloudinaryStorage({
+//     cloudinary,
+//   params: {
+//     folder: 'BanerImage',
+//     allowed_formats: ['jpg', 'png', 'jpeg'],
+//     //transformation: [{ width: 800, height: 800, crop: 'limit' }],
+//   },
+// });
+// const uploadImag = multer({ Image });
+
+// app.post("/MainImage", uploadImag.single("file"), async (req, res) => {
+//  if (!req.file) {
+//     return res.status(400).send('No file uploaded.');
+//   }
+//  try {
+//     const result = await cloudinary.uploader.upload(req.file.path);
+//     const image = new ImagesMondel({Title:result.Description, Description:result.Description, imageUrl: result.secure_url, imagePublicId: result.imagePublicId });
+//     await image.save();
+//     fs.unlinkSync(req.file.path); // remove local file
+//     res.json(image);
+//   } catch (err) {
+//     res.status(500).json({ error: 'Upload failed' });
+//   }
+//});
+
+//       const posts = new ImagesMondel({
+//         Title,
+//         Description,
+//         imageUrl: req.file.path,
+//         imagePublicId: req.file.filename,
+//     });
+
+//     const saved = await posts.save();
+//     res.status(201).json(saved);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: 'Upload failed' });
+//   }
+// });
+    
+//   const image = await ImagesMondel.create({Title:Title,Description:Description,filename:imagePublicId,path:imageUrl})
+//   res.status(201).json(image);
+//   //res.send({"msg":"image send"})
+//    } catch (error){
+//     res.send({"error":"unable to send the image"})
+//   }
+//   //  const imageUrl =`https://github.com/alembju/AACDMC/blob/main/BanerImage/${req.file.filename}`;
+//   // const fileName = req.file.filename;
+ 
+//   //   await ImagesMondel.create({Title:Title,Description:Description,url: imageUrl});
+//   //   res.send({ status: "ok" });
+//   // } catch (error) {
+//   //   res.json({ status: error });
+//   // }
+// });
 
 //////////////////////////////////////end of back end folder///////////////////
 /*const Image = multer.diskStorage({
@@ -1132,6 +1230,30 @@ app.post("/upload-image", uploadImag.single("Image"), (req, res) => {
   //}
 });*/
 ///////////////get image for insert image/////////
+app.get('/Baner', async (req, res) => {
+  try {
+    const posts = await ImagesMondel.find().sort({ _id: -1 });
+    res.json(posts);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not retrieve posts' });
+  }
+});
+
+// app.get('/images/:id', async (req, res) => {
+//    const {id} = req.params
+//   try {
+//     const image = await ImagesMondel.findById({_id: id});
+//     if (!image) {
+//       return res.status(404).send('Image not found');
+//     }
+//     const imagepath = path.join(__dirname, "BanerImage" , image.filename)
+//     res.send(imagepath)
+//     //res.json(image); // Returns the image metadata including filename and URL
+//   } catch (error) {
+//     res.status(500).json({ error: 'Failed to retrieve image' });
+//   }
+// });
+
 app.get("/get-image", async (req, res) => {
   try {
     ImagesMondel.find({}).then((data) => {
@@ -1258,22 +1380,26 @@ app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 ///////////////////////////multer attached file for email/////////////
-const Emailstorage = multer.diskStorage({
-  destination:function(req, file, cb){
-      cb(null,('./attached'));
+
+const Esend = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
-  Attachedfilename:function(req,file,cb){
-      const name = Date.now()+'-'+file.originalname;
-      cb(null,name);
-  }
 });
 
-const attached = multer({storage: Emailstorage });
+const attached = multer({storage: Esend });
 app.post("/Esend", attached.single("file"), async(req, res) =>{
   try{
   const { Title,email,messages,Statua} = req.body;
   //const fileName = req.file.filename;
   const file= req.file;
+   const cloudinaryResponse = await cloudinary.uploader.upload(file, {
+    folder: "attached",
+  });
   console.log(Title,email, messages,file,Statua);
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -1302,6 +1428,7 @@ const transporter = nodemailer.createTransport({
   };
   await transporter.sendMail(mailOptions); 
       res.status(200).send('Email sent successfully!'); 
+      res.render("index.ejs", { url: cloudinaryResponse.secure_url });
     } catch  (error) 
     { res.status(500).send('Error sending email'); 
       console.error(error); 
@@ -12661,34 +12788,76 @@ app.post("/IRBUpload" ,(req, res) => {
 //////bulletin uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");"./FinalReserchPaper"
-
 const Bulletin = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./Bulletin");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/Bulletin");
 const BulletinMondel = mongoose.model("Bulletin");
 const BulletinStorage = multer({ storage: Bulletin });
 
 app.post("/WeekelyBuletin", BulletinStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const Title = req.body.Title;
-  const EPIWeek = req.body.EPIWeek;
-  const BullitenDate = req.body.BullitenDate;
-  const BulletinfileName = req.file.filename;
-  try {
-    await BulletinMondel.create({Title:Title, EPIWeek: EPIWeek,BullitenDate:BullitenDate,pdf:BulletinfileName});
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {Title,EPIWeek,BullitenDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryBulletin = await cloudinary.uploader.upload(file, {
+    folder: "Bulletin",
+     resource_type: "auto/pdf"
+  });
+try {
+  const savetoDb = await BulletinMondel.create({
+    Title,
+    EPIWeek,
+    BullitenDate,
+    filename: originalname,
+    public_id: cloudinaryBulletin.public_id,
+    imgUrl: cloudinaryBulletin.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryBulletin.secure_url });
+  console.log("cloudinary CapacityBuilding response ", cloudinaryBulletin,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
 });
+
+
+// const Bulletin = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, "./Bulletin");
+//   },
+//   IRBUploadfilename: function (req, file, cb) {
+//     const uniqueSuffix = Date.now();
+//     cb(null, uniqueSuffix + file.originalname);
+//   },
+// });
+
+// require("./model/Bulletin");
+// const BulletinMondel = mongoose.model("Bulletin");
+// const BulletinStorage = multer({ storage: Bulletin });
+
+// app.post("/WeekelyBuletin", BulletinStorage.single("file"), async (req, res) => {
+//   console.log(req.file);
+//   const Title = req.body.Title;
+//   const EPIWeek = req.body.EPIWeek;
+//   const BullitenDate = req.body.BullitenDate;
+//   const BulletinfileName = req.file.filename;
+//   try {
+//     await BulletinMondel.create({Title:Title, EPIWeek: EPIWeek,BullitenDate:BullitenDate,pdf:BulletinfileName});
+//     res.send({ status: "ok" });
+//   } catch (error) {
+//     res.json({ status: error });
+//   }
+// });
 
 app.get("/get-Bulliten", async (req, res) => {
   try {
@@ -12701,30 +12870,43 @@ app.get("/get-Bulliten", async (req, res) => {
 /////bulletin uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");"./FinalReserchPaper"
-
 const SUpdate = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./SUpdate");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/SUpdate");
 const SUpdateMondel = mongoose.model("SUpdate");
 const SUpdateStorage = multer({ storage: SUpdate });
 
 app.post("/SUpdate", SUpdateStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const Title = req.body.Title;
-  const SUpdateDate = req.body.SUpdateDate;
-  const SUpdatefileName = req.file.filename;
-  try {
-    await SUpdateMondel.create({Title:Title, SUpdateDate: SUpdateDate,pdf:SUpdatefileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {Title,SUpdateDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinarySUpdate = await cloudinary.uploader.upload(file, {
+    folder: "SUpdate",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await SUpdateMondel.create({
+    Title,
+    SUpdateDate,
+    filename: originalname,
+    public_id: cloudinarySUpdate.public_id,
+    imgUrl: cloudinarySUpdate.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinarySUpdate.secure_url });
+  console.log("cloudinary SUpdate response ", cloudinarySUpdate,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -12739,30 +12921,49 @@ app.get("/get-SUpdate", async (req, res) => {
 //////Outbreak Investigation uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const OutbreakI = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./OutbreakInvestigation");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/OutbreakI");
 const OutbreakIMondel = mongoose.model("OutbreakI");
 const OutbreakIStorage = multer({ storage: OutbreakI });
 
 app.post("/OutbreakInvestigation", OutbreakIStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const InvestigationTitle = req.body.InvestigationTitle;
-  const EPIWeek = req.body.EPIWeek;
-  const ReportingDate = req.body.ReportingDate
-  const OutbreakIfileName = req.file.filename;
-  try {
-    await OutbreakIMondel.create({InvestigationTitle:InvestigationTitle, EPIWeek: EPIWeek,ReportingDate:ReportingDate,pdf:OutbreakIfileName});
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {InvestigationTitle,EPIWeek,ReportingDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryOutbreakI = await cloudinary.uploader.upload(file, {
+    folder: "OutbreakInvestigation",
+     resource_type: "auto"
+  });
+try {
+  const savetoDb = await OutbreakIMondel.create({
+    InvestigationTitle,
+    EPIWeek,
+    ReportingDate,
+    filename: originalname,
+    public_id: cloudinaryOutbreakI.public_id,
+    imgUrl: cloudinaryOutbreakI.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryOutbreakI.secure_url });
+  console.log("cloudinary CapacityBuilding response ", cloudinaryOutbreakI,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
@@ -12835,31 +13036,48 @@ app.get("/Gete-LowLevel", async (req, res) => {
  //multer------------------------------------------------------------
 //const multer = require("multer");
 
+
 const NOPV = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./NOPV");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    
-    cb(null, file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/NOPV");
 const NOPVMondel = mongoose.model("NOPV");
 const NOPVStorage = multer({ storage: NOPV });
 
 app.post("/NOPVDocument", NOPVStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const NOPVTitle = req.body.NOPVTitle;
-  const NOPVfileName = req.file.filename;
-  try {
-    await NOPVMondel.create({NOPVTitle:NOPVTitle, pdf:NOPVfileName});
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {NOPVTitle} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryNOPV = await cloudinary.uploader.upload(file, {
+    folder: "NOPV",
+     resource_type: "auto"
+  });
+try {
+  const savetoDb = await NOPVMondel.create({
+    NOPVTitle,
+    filename: originalname,
+    public_id: cloudinaryNOPV.public_id,
+    imgUrl: cloudinaryNOPV.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryNOPV.secure_url });
+  console.log("cloudinary IRBPolicy response ", cloudinaryNOPV,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
 });
+
+
 
 app.get("/get-NOPV", async (req, res) => {
   try {
@@ -12872,29 +13090,42 @@ app.get("/get-NOPV", async (req, res) => {
 //VRAM uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const VRAM = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./VRAM");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    
-    cb(null, file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/VRAM");
 const VRAMMondel = mongoose.model("VRAM");
 const VRAMStorage = multer({ storage: VRAM });
 
 app.post("/VRAMDocument", VRAMStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const VRAMTitle = req.body.VRAMTitle;
-  const VRAMfileName = req.file.filename;
-  try {
-    await VRAMMondel.create({VRAMTitle:VRAMTitle, pdf:VRAMfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {VRAMTitle} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryVRAM = await cloudinary.uploader.upload(file, {
+    folder: "VRAM",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await VRAMMondel.create({
+    VRAMTitle,
+    filename: originalname,
+    public_id: cloudinaryVRAM.public_id,
+    imgUrl: cloudinaryVRAM.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryVRAM.secure_url });
+  console.log("cloudinary VRAM response ", cloudinaryVRAM,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -12910,14 +13141,13 @@ app.get("/get-VRAM", async (req, res) => {
 //EPRP uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const EPRP = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./EPRP");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    
-    cb(null, file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -12926,14 +13156,27 @@ const EPRPMondel = mongoose.model("EPRP");
 const EPRPStorage = multer({ storage: EPRP });
 
 app.post("/EPRPDocument", EPRPStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const EPRPTitle = req.body.EPRPTitle;
-  const VRAMSource = req.body.VRAMSource;
-  const EPRPfileName = req.file.filename;
-  try {
-    await EPRPMondel.create({EPRPTitle:EPRPTitle,VRAMSource:VRAMSource, pdf:EPRPfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {EPRPTitle,VRAMSource} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryEPRP = await cloudinary.uploader.upload(file, {
+    folder: "EPRP",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await EPRPMondel.create({
+    EPRPTitle,
+    VRAMSource,
+    filename: originalname,
+    public_id: cloudinaryEPRP.public_id,
+    imgUrl: cloudinaryEPRP.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryEPRP.secure_url });
+  console.log("cloudinary VRAM response ", cloudinaryEPRP,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -12949,36 +13192,85 @@ app.get("/get-EPRP", async (req, res) => {
 //RiskA uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
+// cloudinary.config({
+//   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+//   api_key: process.env.CLOUDINARY_API_KEY,
+//   api_secret: process.env.CLOUDINARY_API_SECRET,
+// });
 
 const RiskA = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./RiskA");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    
-    cb(null, file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/RiskA");
 const RiskAMondel = mongoose.model("RiskA");
 const RiskAStorage = multer({ storage: RiskA });
 
 app.post("/RiskA", RiskAStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const RiskTitle = req.body.RiskTitle;
-  const RARegion = req.body.RARegion;
-  const SubCity = req.file.SubCity;
-  const RAKebele = req.body.RAKebele;
-  const RAWoreda = req.body.RAWoreda;
-  const RiskAfileName = req.file.filename;
-  try {
-    await RiskAMondel.create({RiskTitle:RiskTitle,RARegion:RARegion, SubCity:SubCity,RAKebele:RAKebele,RAWoreda:RAWoreda, pdf:RiskAfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {RiskTitle,RARegion,SubCity,RAKebele,RAWoreda } = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryRiskA = await cloudinary.uploader.upload(file, {
+    folder: "RiskA",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await RiskAMondel.create({
+    RiskTitle,
+    RARegion,
+    SubCity,
+    RAKebele,
+    RAWoreda,
+    filename: originalname,
+    public_id: cloudinaryRiskA.public_id,
+    imgUrl: cloudinaryRiskA.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryRiskA.secure_url });
+  console.log("cloudinary Cards response ", cloudinaryRiskA,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
+// const RiskA = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, "./RiskA");
+//   },
+//   IRBUploadfilename: function (req, file, cb) {
+    
+//     cb(null, file.originalname);
+//   },
+// });
+
+// require("./model/RiskA");
+// const RiskAMondel = mongoose.model("RiskA");
+// const RiskAStorage = multer({ storage: RiskA });
+
+// app.post("/RiskA", RiskAStorage.single("file"), async (req, res) => {
+//   console.log(req.file);
+//   const RiskTitle = req.body.RiskTitle;
+//   const RARegion = req.body.RARegion;
+//   const SubCity = req.file.SubCity;
+//   const RAKebele = req.body.RAKebele;
+//   const RAWoreda = req.body.RAWoreda;
+//   const RiskAfileName = req.file.filename;
+//   try {
+//     await RiskAMondel.create({RiskTitle:RiskTitle,RARegion:RARegion, SubCity:SubCity,RAKebele:RAKebele,RAWoreda:RAWoreda, pdf:RiskAfileName});
+//     res.send({ status: "ok" });
+//   } catch (error) {
+//     res.json({ status: error });
+//   }
+// });
 
 app.get("/get-RiskA", async (req, res) => {
   try {
@@ -12987,36 +13279,57 @@ app.get("/get-RiskA", async (req, res) => {
     });
   } catch (error) {}
 });
+app.get('/get-RiskA/:id', (req, res) => {
+  const id = req.params.id
+  RiskAMondel.findById({_id: id})
+  .then(post => res.json(post))
+  .catch(err => console.log(err))
+})
 //IAR uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
 
 const IAR = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./IAR");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    
-    cb(null, file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/IAR");
 const IARMondel = mongoose.model("IAR");
 const IARStorage = multer({ storage: IAR });
 
 app.post("/IARDocument", IARStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const IARTitle = req.body.IARTitle;
-  const Abstract = req.body.Abstract;
-  const IARfileName = req.file.filename;
-  try {
-    await IARMondel.create({IARTitle:IARTitle,Abstract:Abstract, pdf:IARfileName});
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {IARTitle,Abstract} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryIAR = await cloudinary.uploader.upload(file, {
+    folder: "IAR",
+     resource_type: "auto"
+  });
+try {
+  const savetoDb = await IARMondel.create({
+    IARTitle,
+    Abstract,
+    filename: originalname,
+    public_id: cloudinaryIAR.public_id,
+    imgUrl: cloudinaryIAR.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryIAR.secure_url });
+  console.log("cloudinary IRBPolicy response ", cloudinaryIAR,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-IAR", async (req, res) => {
   try {
@@ -13029,33 +13342,47 @@ app.get("/get-IAR", async (req, res) => {
 //AAPHEML Research Unit Publication/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const Publication = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./Publication");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    
-    cb(null, file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/Publication");
 const PublicationMondel = mongoose.model("Publication");
 const PublicationStorage = multer({ storage: Publication });
 
 app.post("/Publication", PublicationStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const PublicationTitle = req.body.PublicationTitle;
-  const PublicationAbstract = req.body.PublicationAbstract;
-  const PublicationfileName = req.file.filename;
-  try {
-    await PublicationMondel.create({PublicationTitle:PublicationTitle,PublicationAbstract:PublicationAbstract, pdf:PublicationfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {PublicationTitle,PublicationAbstract} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryPublication = await cloudinary.uploader.upload(file, {
+    folder: "Publication",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await PublicationMondel.create({
+    PublicationTitle,
+    PublicationAbstract,
+    filename: originalname,
+    public_id: cloudinaryPublication.public_id,
+    imgUrl: cloudinaryPublication.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryPublication.secure_url });
+  console.log("cloudinary Publication response ", cloudinaryPublication,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-Publication", async (req, res) => {
   try {
@@ -13068,35 +13395,50 @@ app.get("/get-Publication", async (req, res) => {
 //Education & Training by AAPHEML Research Unit /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const ETraining = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./ETraining");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    
-    cb(null, file.originalname);
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/ETraining");
 const ETrainingMondel = mongoose.model("ETraining");
 const ETrainingStorage = multer({ storage: ETraining });
 
 app.post("/ETraining", ETrainingStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const ETrainingTitle = req.body.ETrainingTitle;
-  const ETrainingDate = req.body.ETrainingDate;
-  const ETrainer = req.body.ETrainer;
-  const EPlace = req.body.EPlace;
-  const ETrainingfileName = req.file.filename;
-  try {
-    await ETrainingMondel.create({ETrainingTitle:ETrainingTitle,ETrainingDate:ETrainingDate,ETrainer:ETrainer,EPlace:EPlace, pdf:ETrainingfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {ETrainingTitle,ETrainingDate,ETrainer,EPlace} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryETraining = await cloudinary.uploader.upload(file, {
+    folder: "ETraining",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await ETrainingMondel.create({
+    ETrainingTitle,
+    ETrainingDate,
+    ETrainer,
+    EPlace,
+    filename: originalname,
+    public_id: cloudinaryETraining.public_id,
+    imgUrl: cloudinaryETraining.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryETraining.secure_url });
+  console.log("cloudinary ETraining response ", cloudinaryETraining,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
+
 
 app.get("/get-ETraining", async (req, res) => {
   try {
@@ -13106,38 +13448,167 @@ app.get("/get-ETraining", async (req, res) => {
   } catch (error) {}
 });
 
-//Education & Training by AAPHEML Research Unit /////////////////////////////////////////////////////////
+
+//Laboratory Training Modules by AAPHEML Research Unit /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const SitRep = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./SitRep");
-  },
-  IRBUploadfilename: function (req, file, cb) {
-    
-    cb(null, file.originalname);
+const TModules = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
+
+require("./model/TModules");
+const TModulesMondel = mongoose.model("TModules");
+const TModulesStorage = multer({ storage: ETraining });
+
+app.post("/TModules", TModulesStorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {TModulesTitle,TModulesDate,TMTrainer} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryTModules = await cloudinary.uploader.upload(file, {
+    folder: "TModules",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await TModulesMondel.create({
+    TModulesTitle,
+    TModulesDate,
+    TMTrainer,
+    filename: originalname,
+    public_id: cloudinaryTModules.public_id,
+    imgUrl: cloudinaryTModules.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryTModules.secure_url });
+  console.log("cloudinary TModules response ", cloudinaryTModules,savetoDb);
+   } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-TModules", async (req, res) => {
+  try {
+    TModulesMondel.find({}).sort({createdAt: -1}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+
+
+//Laboratory Training Modules by AAPHEML Laboratory Unit /////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+const Regulations = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+
+require("./model/Regulations");
+const RegulationsMondel = mongoose.model("Regulations");
+const RegulationsStorage = multer({ storage: Regulations });
+
+app.post("/Regulations", RegulationsStorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {RulesTitle,RulesADate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryRegulations = await cloudinary.uploader.upload(file, {
+    folder: "Regulations",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await RegulationsMondel.create({
+    RulesTitle,
+    RulesADate,
+    filename: originalname,
+    public_id: cloudinaryRegulations.public_id,
+    imgUrl: cloudinaryRegulations.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryRegulations.secure_url });
+  console.log("cloudinary Regulations response ", cloudinaryRegulations,savetoDb);
+   } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Regulations", async (req, res) => {
+  try {
+    RegulationsMondel.find({}).sort({createdAt: -1}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+
+
+//SitRep /////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const SitRep = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
 
 require("./model/SitRep");
 const SitRepMondel = mongoose.model("SitRep");
 const SitRepStorage = multer({ storage: SitRep });
 
 app.post("/SitRep", SitRepStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const SitRepTitle = req.body.SitRepTitle;
-  const SitRepDate = req.body.SitRepDate;
-  const SUpdate = req.body.SUpdate;
-  const EPIWeek = req.body.EPIWeek;
-  const SitRepfileName = req.file.filename;
-  try {
-    await SitRepMondel.create({SitRepTitle:SitRepTitle,SitRepDate:SitRepDate,SUpdate:SUpdate,EPIWeek:EPIWeek, pdf:SitRepfileName});
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {SitRepTitle,SitRepDate,SUpdate,EPIWeek} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinarySitRep = await cloudinary.uploader.upload(file, {
+    folder: "SitRep",
+     resource_type: "auto"
+  });
+try {
+  const savetoDb = await SitRepMondel.create({
+    SitRepTitle,
+    SitRepDate,
+    SUpdate,
+    EPIWeek,
+    filename: originalname,
+    public_id: cloudinarySitRep.public_id,
+    imgUrl: cloudinarySitRep.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinarySitRep.secure_url });
+  console.log("cloudinary CapacityBuilding response ", cloudinarySitRep,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
 });
+
+
 
 app.get("/get-SitRep", async (req, res) => {
   try {
@@ -13235,33 +13706,48 @@ app.post('/posts/:id/comments', async (req, res) => {
 ///Suppervision uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const Suppervision = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./Suppervision");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    ////
-    cb(null, file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/Suppervision");
 const SuppervisionMondel = mongoose.model("Suppervision");
 const SuppervisionStorage = multer({ storage: Suppervision });
 
 app.post("/Suppervision", SuppervisionStorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const SuppervisionTitle = req.body.SuppervisionTitle;
-  const EPIWeek = req.body.EPIWeek;
-  const SuppervisionfileName = req.file.filename;
-  try {
-    await SuppervisionMondel.create({SuppervisionTitle:SuppervisionTitle,EPIWeek:EPIWeek , pdf:SuppervisionfileName});
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {SuppervisionTitle,EPIWeek} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinarySuppervision = await cloudinary.uploader.upload(file, {
+    folder: "Suppervision",
+     resource_type: "auto"
+  });
+try {
+  const savetoDb = await SuppervisionMondel.create({
+    SuppervisionTitle,
+    EPIWeek,
+    filename: originalname,
+    public_id: cloudinarySuppervision.public_id,
+    imgUrl: cloudinarySuppervision.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinarySuppervision.secure_url });
+  console.log("cloudinary IRBPolicy response ", cloudinarySuppervision,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
 });
+
+
 
 app.get("/get-Suppervision", async (req, res) => {
   try {
@@ -13274,34 +13760,51 @@ app.get("/get-Suppervision", async (req, res) => {
 //////Homepage Cards uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const Cards = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Cards");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/Cards");
 const CardsMondel = mongoose.model("Cards");
 const Cardstorage = multer({ storage: Cards });
 
 app.post("/CreatCards", Cardstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const FrontTitle = req.body.FrontTitle;
-  const Frontdescription = req.body.Frontdescription;
-   const FrontDetail = req.body.FrontDetail;
-  const FrontCardsfileName = req.file.filename;
-  try {
-    await CardsMondel.create({FrontTitle:FrontTitle, Frontdescription:Frontdescription,FrontDetail:FrontDetail, pdf:FrontCardsfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
-    res.json({ status: error });
-  }
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const { FrontTitle, Frontdescription,FrontDetail } = req.body;
+
+  const cloudinaryCards = await cloudinary.uploader.upload(file, {
+    folder: "Cards",
+  });
+
+  const savetoDb = await CardsMondel.create({
+    FrontTitle,
+    Frontdescription,
+    FrontDetail,
+    filename: file.originalname,
+    public_id: cloudinaryCards.public_id,
+    imgUrl: cloudinaryCards.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryCards.secure_url });
+  console.log("cloudinary Cards response ", cloudinaryCards,savetoDb);
 });
+
+
+
 
 app.get('/get-BottumCards/:id', (req, res) => {
   const id = req.params.id
@@ -13331,14 +13834,13 @@ app.get('/get-Cards/:id', (req, res) => {
 //////Homepage Accredited/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const Accredited = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Accredited");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13347,17 +13849,32 @@ const AccreditedMondel = mongoose.model("Accredited");
 const Accreditedstorage = multer({ storage: Accredited });
 
 app.post("/Accredited", Accreditedstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const AccreditedTitle = req.body.AccreditedTitle;
-  const AccreditedDate = req.body.AccreditedDate;
-  const AccreditedfileName = req.file.filename;
-  try {
-    await AccreditedMondel.create({AccreditedTitle:AccreditedTitle, AccreditedDate:AccreditedDate, pdf:AccreditedfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {AccreditedTitle,AccreditedDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryAccredited = await cloudinary.uploader.upload(file, {
+    folder: "Accredited",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await AccreditedMondel.create({
+    AccreditedTitle,
+    AccreditedDate,
+    filename: originalname,
+    public_id: cloudinaryAccredited.public_id,
+    imgUrl: cloudinaryAccredited.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryAccredited.secure_url });
+  console.log("cloudinary Accredited response ", cloudinaryAccredited,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
+
 
 app.get("/get-Accredited", async (req, res) => {
   try {
@@ -13372,14 +13889,13 @@ app.get("/get-Accredited", async (req, res) => {
 //////Homepage EQA/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const EQA = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./EQA");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13388,14 +13904,27 @@ const EQAMondel = mongoose.model("EQA");
 const EQAstorage = multer({ storage: EQA });
 
 app.post("/EQA", EQAstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const EQATitle = req.body.EQATitle;
-  const EQADate = req.body.EQADate;
-  const EQAfileName = req.file.filename;
-  try {
-    await EQAMondel.create({EQATitle:EQATitle, EQADate:EQADate, pdf:EQAfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {EQATitle,EQADate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryEQA = await cloudinary.uploader.upload(file, {
+    folder: "EQA",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await EQAMondel.create({
+    EQATitle,
+    EQADate,
+    filename: originalname,
+    public_id: cloudinaryEQA.public_id,
+    imgUrl: cloudinaryEQA.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryEQA.secure_url });
+  console.log("cloudinary Accredited response ", cloudinaryEQA,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -13413,14 +13942,13 @@ app.get("/get-EQA", async (req, res) => {
 //////Homepage CPD/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const CPD = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./CPD");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13429,17 +13957,32 @@ const CPDMondel = mongoose.model("CPD");
 const CPDstorage = multer({ storage: CPD });
 
 app.post("/CPD", CPDstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const CPDTitle = req.body.CPDTitle;
-  const CPDDate = req.body.CPDDate;
-  const CPDfileName = req.file.filename;
-  try {
-    await CPDMondel.create({CPDTitle:CPDTitle, CPDDate:CPDDate, pdf:CPDfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {CPDTitle,CPDDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryCPD = await cloudinary.uploader.upload(file, {
+    folder: "CPD",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await CPDMondel.create({
+    CPDTitle,
+    CPDDate,
+    filename: originalname,
+    public_id: cloudinaryCPD.public_id,
+    imgUrl: cloudinaryCPD.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryCPD.secure_url });
+  console.log("cloudinary CPD response ", cloudinaryCPD,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
+
 
 app.get("/get-CPD", async (req, res) => {
   try {
@@ -13455,14 +13998,13 @@ app.get("/get-CPD", async (req, res) => {
 //////Homepage SLIMTA/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const SLIMTA = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./SLIMTA");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13471,17 +14013,31 @@ const SLIMTAMondel = mongoose.model("SLIMTA");
 const SLIMTAstorage = multer({ storage: SLIMTA });
 
 app.post("/SLIMTA", SLIMTAstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const SLIMTATitle = req.body.SLIMTATitle;
-  const SLIMTADate = req.body.SLIMTADate;
-  const SLIMTAfileName = req.file.filename;
-  try {
-    await SLIMTAMondel.create({SLIMTATitle:SLIMTATitle, SLIMTADate:SLIMTADate, pdf:SLIMTAfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {SLIMTATitle,SLIMTADate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinarySLIMTA = await cloudinary.uploader.upload(file, {
+    folder: "SLIMTA",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await SLIMTAMondel.create({
+    SLIMTATitle,
+    SLIMTADate,
+    filename: originalname,
+    public_id: cloudinarySLIMTA.public_id,
+    imgUrl: cloudinarySLIMTA.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinarySLIMTA.secure_url });
+  console.log("cloudinary SLIMTA response ", cloudinarySLIMTA,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-SLIMTA", async (req, res) => {
   try {
@@ -13496,14 +14052,13 @@ app.get("/get-SLIMTA", async (req, res) => {
 //////Homepage Mentorship/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const Mentorship = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Mentorship");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13512,17 +14067,31 @@ const MentorshipMondel = mongoose.model("Mentorship");
 const Mentorshipstorage = multer({ storage: Mentorship });
 
 app.post("/Mentorship", Mentorshipstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const MentorshipTitle = req.body.MentorshipTitle;
-  const MentorshipDate = req.body.MentorshipDate;
-  const MentorshipfileName = req.file.filename;
-  try {
-    await MentorshipMondel.create({MentorshipTitle:MentorshipTitle, MentorshipDate:MentorshipDate, pdf:MentorshipfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {MentorshipTitle,MentorshipDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryMentorship = await cloudinary.uploader.upload(file, {
+    folder: "Mentorship",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await MentorshipMondel.create({
+    MentorshipTitle,
+    MentorshipDate,
+    filename: originalname,
+    public_id: cloudinaryMentorship.public_id,
+    imgUrl: cloudinaryMentorship.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryMentorship.secure_url });
+  console.log("cloudinary Mentorship response ", cloudinaryMentorship,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-Mentorship", async (req, res) => {
   try {
@@ -13537,14 +14106,13 @@ app.get("/get-Mentorship", async (req, res) => {
 //////Homepage QualityIndicators/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const QualityIndicators = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./QualityIndicators");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13553,17 +14121,31 @@ const QualityIndicatorsMondel = mongoose.model("QualityIndicators");
 const QualityIndicatorsstorage = multer({ storage: QualityIndicators });
 
 app.post("/QualityIndicators", QualityIndicatorsstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const QualityIndicatorsTitle = req.body.QualityIndicatorsTitle;
-  const QualityIndicatorsDate = req.body.QualityIndicatorsDate;
-  const QualityIndicatorsfileName = req.file.filename;
-  try {
-    await QualityIndicatorsMondel.create({QualityIndicatorsTitle:QualityIndicatorsTitle, QualityIndicatorsDate:QualityIndicatorsDate, pdf:QualityIndicatorsfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {QualityIndicatorsTitle,QualityIndicatorsDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryQualityIndicators = await cloudinary.uploader.upload(file, {
+    folder: "QualityIndicators",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await QualityIndicatorsMondel.create({
+    QualityIndicatorsTitle,
+    QualityIndicatorsDate,
+    filename: originalname,
+    public_id: cloudinaryQualityIndicators.public_id,
+    imgUrl: cloudinaryQualityIndicators.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryQualityIndicators.secure_url });
+  console.log("cloudinary QualityIndicators response ", cloudinaryQualityIndicators,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-QualityIndicator", async (req, res) => {
   try {
@@ -13578,14 +14160,13 @@ app.get("/get-QualityIndicator", async (req, res) => {
 //////Homepage Laboratory/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const Laboratory = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Laboratory");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13594,17 +14175,31 @@ const LaboratoryMondel = mongoose.model("Laboratory");
 const Laboratorystorage = multer({ storage: Laboratory });
 
 app.post("/Laboratory", Laboratorystorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const LaboratoryTitle = req.body.LaboratoryTitle;
-  const LaboratoryDate = req.body.LaboratoryDate;
-  const LaboratoryfileName = req.file.filename;
-  try {
-    await LaboratoryMondel.create({LaboratoryTitle:LaboratoryTitle, LaboratoryDate:LaboratoryDate, pdf:LaboratoryfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {LaboratoryTitle,LaboratoryDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryLaboratory = await cloudinary.uploader.upload(file, {
+    folder: "Laboratory",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await LaboratoryMondel.create({
+    LaboratoryTitle,
+    LaboratoryDate,
+    filename: originalname,
+    public_id: cloudinaryLaboratory.public_id,
+    imgUrl: cloudinaryLaboratory.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryLaboratory.secure_url });
+  console.log("cloudinary Laboratory response ", cloudinaryLaboratory,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-Laboratory", async (req, res) => {
   try {
@@ -13620,14 +14215,13 @@ app.get("/get-Laboratory", async (req, res) => {
 //////Homepage PolicyDoc/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
 const PolicyDoc = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./PolicyDoc");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13636,17 +14230,31 @@ const PolicyDocMondel = mongoose.model("PolicyDoc");
 const PolicyDocstorage = multer({ storage: PolicyDoc });
 
 app.post("/PolicyDoc", PolicyDocstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const PolicyDocTitle = req.body.PolicyDocTitle;
-  const PolicyDocDate = req.body.PolicyDocDate;
-  const PolicyDocfileName = req.file.filename;
-  try {
-    await PolicyDocMondel.create({PolicyDocTitle:PolicyDocTitle, PolicyDocDate:PolicyDocDate, pdf:PolicyDocfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {PolicyDocTitle,PolicyDocDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryPolicyDoc = await cloudinary.uploader.upload(file, {
+    folder: "PolicyDoc",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await PolicyDocMondel.create({
+    PolicyDocTitle,
+    PolicyDocDate,
+    filename: originalname,
+    public_id: cloudinaryPolicyDoc.public_id,
+    imgUrl: cloudinaryPolicyDoc.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryPolicyDoc.secure_url });
+  console.log("cloudinary Laboratory response ", cloudinaryPolicyDoc,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-PolicyDoc", async (req, res) => {
   try {
@@ -13661,14 +14269,13 @@ app.get("/get-PolicyDoc", async (req, res) => {
 //////Homepage Referral_L/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  Referral = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Referral");
-  },
+const Referral = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13676,15 +14283,28 @@ require("./model/Referral");
 const  ReferralMondel = mongoose.model("Referral");
 const  Referralstorage = multer({ storage:  Referral });
 
-app.post("/Referral",  Referralstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  ReferralTitle = req.body. ReferralTitle;
-  const  ReferralDate = req.body. ReferralDate;
-  const  ReferralfileName = req.file.filename;
-  try {
-    await ReferralMondel.create({ ReferralTitle: ReferralTitle,  ReferralDate: ReferralDate, pdf: ReferralfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/Referral", Referralstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {ReferralTitle,ReferralDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryReferral = await cloudinary.uploader.upload(file, {
+    folder: "Referral",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await ReferralMondel.create({
+    ReferralTitle,
+    ReferralDate,
+    filename: originalname,
+    public_id: cloudinaryReferral.public_id,
+    imgUrl: cloudinaryReferral.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryReferral.secure_url });
+  console.log("cloudinary Referral response ", cloudinaryReferral,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -13702,14 +14322,13 @@ app.get("/get-Referral", async (req, res) => {
 //////Homepage Manuals/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  Manuals = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Manuals");
-  },
+const Manuals = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13717,18 +14336,32 @@ require("./model/Manuals");
 const  ManualsMondel = mongoose.model("Manuals");
 const  Manualsstorage = multer({ storage:  Manuals });
 
-app.post("/Manuals",  Manualsstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  ManualsTitle = req.body. ManualsTitle;
-  const ManualsDate = req.body. ManualsDate;
-  const  ManualsfileName = req.file.filename;
-  try {
-    await ManualsMondel.create({ ManualsTitle: ManualsTitle,  ManualsDate: ManualsDate, pdf: ManualsfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/Manuals", Manualsstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {ManualsTitle,ManualsDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryManuals = await cloudinary.uploader.upload(file, {
+    folder: "Manuals",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await ManualsMondel.create({
+    ManualsTitle,
+    ManualsDate,
+    filename: originalname,
+    public_id: cloudinaryManuals.public_id,
+    imgUrl: cloudinaryManuals.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryManuals.secure_url });
+  console.log("cloudinary Manuals response ", cloudinaryManuals,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-Manuals", async (req, res) => {
   try {
@@ -13744,14 +14377,13 @@ app.get("/get-Manuals", async (req, res) => {
 //////Homepage Process/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  Process = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Process");
-  },
+const Process = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13759,18 +14391,32 @@ require("./model/Process");
 const  ProcessMondel = mongoose.model("Process");
 const  Processstorage = multer({ storage:  Process });
 
-app.post("/Process",  Processstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  ProcessTitle = req.body. ProcessTitle;
-  const ProcessDate = req.body. ProcessDate;
-  const  ProcessfileName = req.file.filename;
-  try {
-    await ProcessMondel.create({ ProcessTitle: ProcessTitle,  ProcessDate: ProcessDate, pdf: ProcessfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/Process", Processstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {ProcessTitle,ProcessDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryProcess = await cloudinary.uploader.upload(file, {
+    folder: "Process",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await ProcessMondel.create({
+    ProcessTitle,
+    ProcessDate,
+    filename: originalname,
+    public_id: cloudinaryProcess.public_id,
+    imgUrl: cloudinaryProcess.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryProcess.secure_url });
+  console.log("cloudinary Process response ", cloudinaryProcess,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-Process", async (req, res) => {
   try {
@@ -13785,14 +14431,13 @@ app.get("/get-Process", async (req, res) => {
 //////Homepage Procedures/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  Procedures = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Procedures");
-  },
+const Procedures = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13800,18 +14445,32 @@ require("./model/Procedures");
 const  ProceduresMondel = mongoose.model("Procedures");
 const  Proceduresstorage = multer({ storage:  Procedures });
 
-app.post("/Procedures",  Proceduresstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  ProceduresTitle = req.body. ProceduresTitle;
-  const ProceduresDate = req.body. ProceduresDate;
-  const  ProceduresfileName = req.file.filename;
-  try {
-    await ProceduresMondel.create({ ProceduresTitle: ProceduresTitle,  ProceduresDate: ProceduresDate, pdf: ProceduresfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/Procedures", Proceduresstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {ProceduresTitle,ProceduresDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryProcedures = await cloudinary.uploader.upload(file, {
+    folder: "Procedures",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await ProceduresMondel.create({
+    ProceduresTitle,
+    ProceduresDate,
+    filename: originalname,
+    public_id: cloudinaryProcedures.public_id,
+    imgUrl: cloudinaryProcedures.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryProcedures.secure_url });
+  console.log("cloudinary Manuals response ", cloudinaryProcedures,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-Procedures", async (req, res) => {
   try {
@@ -13828,14 +14487,13 @@ app.get("/get-Procedures", async (req, res) => {
 /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  JobAid = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./JobAid");
-  },
+const JobAid = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13843,18 +14501,32 @@ require("./model/JobAid");
 const  JobAidMondel = mongoose.model("JobAid");
 const  JobAidstorage = multer({ storage:  JobAid });
 
-app.post("/JobAids",  JobAidstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  JobAidTitle = req.body. JobAidTitle;
-  const JobAidDate = req.body. JobAidDate;
-  const  JobAidfileName = req.file.filename;
-  try {
-    await JobAidMondel.create({ JobAidTitle: JobAidTitle,  JobAidDate: JobAidDate, pdf: JobAidfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/JobAids", JobAidstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {JobAidTitle,JobAidDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryJobAid = await cloudinary.uploader.upload(file, {
+    folder: "JobAid",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await JobAidMondel.create({
+    JobAidTitle,
+    JobAidDate,
+    filename: originalname,
+    public_id: cloudinaryJobAid.public_id,
+    imgUrl: cloudinaryJobAid.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryJobAid.secure_url });
+  console.log("cloudinary JobAid response ", cloudinaryJobAid,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-JobAid", async (req, res) => {
   try {
@@ -13870,14 +14542,13 @@ app.get("/get-JobAid", async (req, res) => {
 /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  Checklists = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Checklists");
-  },
+const Checklists = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13885,18 +14556,32 @@ require("./model/Checklists");
 const  ChecklistsMondel = mongoose.model("Checklists");
 const  Checkliststorage = multer({ storage:  Checklists });
 
-app.post("/Checklists",  Checkliststorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  ChecklistsTitle = req.body. ChecklistsTitle;
-  const ChecklistsDate = req.body. ChecklistsDate;
-  const  ChecklistsfileName = req.file.filename;
-  try {
-    await ChecklistsMondel.create({ ChecklistsTitle: ChecklistsTitle,  ChecklistsDate: ChecklistsDate, pdf: ChecklistsfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/Checklists", Checkliststorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {ChecklistsTitle,ChecklistsDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryChecklists = await cloudinary.uploader.upload(file, {
+    folder: "Checklists",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await ChecklistsMondel.create({
+    ChecklistsTitle,
+    ChecklistsDate,
+    filename: originalname,
+    public_id: cloudinaryChecklists.public_id,
+    imgUrl: cloudinaryChecklists.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryChecklists.secure_url });
+  console.log("cloudinary Checklists response ", cloudinaryChecklists,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
+
 
 app.get("/get-Checklists", async (req, res) => {
   try {
@@ -13913,14 +14598,13 @@ app.get("/get-Checklists", async (req, res) => {
 /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  Formats = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Formats");
-  },
+const Formats = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13928,15 +14612,28 @@ require("./model/Formats");
 const  FormatsMondel = mongoose.model("Formats");
 const  Formatstorage = multer({ storage:  Formats });
 
-app.post("/Formats",  Formatstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  FormatsTitle = req.body. FormatsTitle;
-  const FormatsDate = req.body. FormatsDate;
-  const  FormatsfileName = req.file.filename;
-  try {
-    await FormatsMondel.create({ FormatsTitle: FormatsTitle,  FormatsDate: FormatsDate, pdf: FormatsfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/Formats", Formatstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {FormatsTitle,FormatsDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryFormats = await cloudinary.uploader.upload(file, {
+    folder: "Formats",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await FormatsMondel.create({
+    FormatsTitle,
+    FormatsDate,
+    filename: originalname,
+    public_id: cloudinaryFormats.public_id,
+    imgUrl: cloudinaryFormats.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryFormats.secure_url });
+  console.log("cloudinary Checklists response ", cloudinaryFormats,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -13956,14 +14653,13 @@ app.get("/get-Formats", async (req, res) => {
 /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  LatestUpdate = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./LatestUpdate");
-  },
+const LatestUpdate = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -13971,15 +14667,28 @@ require("./model/LatestUpdate");
 const  LatestUpdateMondel = mongoose.model("LatestUpdate");
 const  LatestUpdatetorage = multer({ storage:  LatestUpdate });
 
-app.post("/LatestUpdate",  LatestUpdatetorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  LatestUpdateTitle = req.body. LatestUpdateTitle;
-  const LatestUpdateDate = req.body. LatestUpdateDate;
-  const  LatestUpdatefileName = req.file.filename;
-  try {
-    await LatestUpdateMondel.create({ LatestUpdateTitle: LatestUpdateTitle,  LatestUpdateDate: LatestUpdateDate, pdf: LatestUpdatefileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/LatestUpdate", LatestUpdatetorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {LatestUpdateTitle,LatestUpdateDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryLatestUpdate = await cloudinary.uploader.upload(file, {
+    folder: "LatestUpdate",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await LatestUpdateMondel.create({
+    LatestUpdateTitle,
+    LatestUpdateDate,
+    filename: originalname,
+    public_id: cloudinaryLatestUpdate.public_id,
+    imgUrl: cloudinaryLatestUpdate.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryLatestUpdate.secure_url });
+  console.log("cloudinary Checklists response ", cloudinaryLatestUpdate,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -13999,14 +14708,13 @@ app.get("/get-LatestUpdate", async (req, res) => {
 /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  Feedback = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./Feedback");
-  },
+const Feedback = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -14014,15 +14722,28 @@ require("./model/Feedback");
 const  FeedbackMondel = mongoose.model("Feedback");
 const  Feedbacktorage = multer({ storage:  Feedback });
 
-app.post("/Feedback",  Feedbacktorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  FeedbackTitle = req.body. FeedbackTitle;
-  const FeedbackDate = req.body. FeedbackDate;
-  const  FeedbackfileName = req.file.filename;
-  try {
-    await FeedbackMondel.create({ FeedbackTitle: FeedbackTitle,  FeedbackDate: FeedbackDate, pdf: FeedbackfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/Feedback", Feedbacktorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {FeedbackTitle,FeedbackDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryFeedback = await cloudinary.uploader.upload(file, {
+    folder: "Feedback",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await FeedbackMondel.create({
+    FeedbackTitle,
+    FeedbackDate,
+    filename: originalname,
+    public_id: cloudinaryFeedback.public_id,
+    imgUrl: cloudinaryFeedback.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryFeedback.secure_url });
+  console.log("cloudinary Checklists response ", cloudinaryFeedback,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -14042,14 +14763,13 @@ app.get("/get-Feedback", async (req, res) => {
 /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  JDescriptions = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./JDescriptions");
-  },
+const JDescriptions = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -14057,15 +14777,28 @@ require("./model/JDescriptions");
 const  JDescriptionsMondel = mongoose.model("JDescriptions");
 const  JDescriptionstorage = multer({ storage:  JDescriptions });
 
-app.post("/JDescriptions",  JDescriptionstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  JDescriptionsTitle = req.body. JDescriptionsTitle;
-  const JDescriptionsDate = req.body. JDescriptionsDate;
-  const  JDescriptionsfileName = req.file.filename;
-  try {
-    await JDescriptionsMondel.create({ JDescriptionsTitle: JDescriptionsTitle,  JDescriptionsDate: JDescriptionsDate, pdf: JDescriptionsfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/JDescriptions", JDescriptionstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {JDescriptionsTitle,JDescriptionsDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryJDescriptions = await cloudinary.uploader.upload(file, {
+    folder: "JDescriptions",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await JDescriptionsMondel.create({
+    JDescriptionsTitle,
+    JDescriptionsDate,
+    filename: originalname,
+    public_id: cloudinaryJDescriptions.public_id,
+    imgUrl: cloudinaryJDescriptions.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryJDescriptions.secure_url });
+  console.log("cloudinary Checklists response ", cloudinaryJDescriptions,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -14082,14 +14815,13 @@ app.get("/get-JDescriptions", async (req, res) => {
 //////Homepage LabGuidlines/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
-
-const  LabGuidlines = multer.diskStorage({
-  destination: function (req, file, cb) { 
-    cb(null,"./LabGuidlines");
-  },
+const LabGuidlines = multer.diskStorage({
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
@@ -14097,14 +14829,27 @@ require("./model/LabGuidlines");
 const  LabGuidlinesMondel = mongoose.model("LabGuidlines");
 const  LabGuidlinesstorage = multer({ storage:  LabGuidlines });
 
-app.post("/LabGuidlines",  LabGuidlinesstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const  LabGuidlinesTitle = req.body. LabGuidlinesTitle;
-  const  LabGuidlinesfileName = req.file.filename;
-  try {
-    await ReferralMondel.create({LabGuidlinesTitle: LabGuidlinesTitle, pdf: LabGuidlinesfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
+app.post("/LabGuidlines", LabGuidlinesstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {LabGuidlinesTitle} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryLabGuidlines = await cloudinary.uploader.upload(file, {
+    folder: "LabGuidlines",
+    resource_type: "auto"
+  });
+
+  const savetoDb = await LabGuidlinesMondel.create({
+    LabGuidlinesTitle,
+    filename: originalname,
+    public_id: cloudinaryLabGuidlines.public_id,
+    imgUrl: cloudinaryLabGuidlines.secure_url,
+  });
+ try {
+  res.render("index.ejs", { url: cloudinaryLabGuidlines.secure_url });
+  console.log("cloudinary LabGuidlines response ", cloudinaryLabGuidlines,savetoDb);
+   } catch (error) {
     res.json({ status: error });
   }
 });
@@ -14154,34 +14899,76 @@ res.json(results)
 //////Homepage CardBottum uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const CardBottum = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null,"./CardBottum");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/CardBottum");
 const CardBottumMondel = mongoose.model("CardBottum");
 const CardBottumstorage = multer({ storage: CardBottum });
 
 app.post("/CreatCardBottum", CardBottumstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const Bottumname = req.body.Bottumname;
-  const Bottumdescription = req.body.Bottumdescription;
-  const BottumDetail = req.body.BottumDetail;
-  const BottumCardsfileName = req.file.filename;
-  try {
-    await CardBottumMondel.create({ Bottumname: Bottumname,Bottumdescription: Bottumdescription,BottumDetail:BottumDetail,pdf:BottumCardsfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
-    res.json({ status: error });
-  }
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const { Bottumname, Bottumdescription,BottumDetail } = req.body;
+
+  const cloudinaryCardBottum = await cloudinary.uploader.upload(file, {
+    folder: "CardBottum",
+  });
+
+  const savetoDb = await CardBottumMondel.create({
+    Bottumname,
+    Bottumdescription,
+    BottumDetail,
+    filename: file.originalname,
+    public_id: cloudinaryCardBottum.public_id,
+    imgUrl: cloudinaryCardBottum.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryCardBottum.secure_url });
+  console.log("cloudinary Cards response ", cloudinaryCardBottum,savetoDb);
 });
+
+// const CardBottum = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null,"./CardBottum");
+//   },
+//   filename: function (req, file, cb) {
+//     const uniqueSuffix = Date.now();
+//     cb(null, uniqueSuffix + file.originalname);
+//   },
+// });
+
+// require("./model/CardBottum");
+// const CardBottumMondel = mongoose.model("CardBottum");
+// const CardBottumstorage = multer({ storage: CardBottum });
+
+// app.post("/CreatCardBottum", CardBottumstorage.single("file"), async (req, res) => {
+//   console.log(req.file);
+//   const Bottumname = req.body.Bottumname;
+//   const Bottumdescription = req.body.Bottumdescription;
+//   const BottumDetail = req.body.BottumDetail;
+//   const BottumCardsfileName = req.file.filename;
+//   try {
+//     await CardBottumMondel.create({ Bottumname: Bottumname,Bottumdescription: Bottumdescription,BottumDetail:BottumDetail,pdf:BottumCardsfileName});
+//     res.send({ status: "ok" });
+//   } catch (error) {
+//     res.json({ status: error });
+//   }
+// });
 
 
 
@@ -14196,34 +14983,77 @@ app.get("/get-CardBottum", async (req, res) => {
 //////Homepage Risk communication uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const CardRiskComm = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null,"./RiskComm");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    cb(null,  file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/RiskCommunication");
 const RiskCommMondel = mongoose.model("RiskCommunication");
 const RiskCommstorage = multer({ storage: CardRiskComm });
 
 app.post("/RiskCommunication", RiskCommstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const Title = req.body.Title;
-  const Defination = req.body.Defination;
-  const Transmition = req.body.Transmition;
-  const Prevation = req.body.Prevation;
-  const RiskCommunicationfileName = req.file.filename;
-  try {
-    await RiskCommMondel.create({ Title: Title,Defination: Defination, Transmition: Transmition,Prevation: Prevation,pdf:RiskCommunicationfileName});
-    res.send({ status: "ok" });
-  } catch (error) {
-    res.json({ status: error });
-  }
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {Title,Defination,Transmition,Prevation} = req.body;
+
+  const cloudinaryRiskComm = await cloudinary.uploader.upload(file, {
+    folder: "RiskComm",
+  });
+
+  const savetoDb = await RiskCommMondel.create({
+    Title,
+    Defination,
+    Transmition,
+    Prevation,
+    filename: file.originalname,
+    public_id: cloudinaryRiskComm.public_id,
+    imgUrl: cloudinaryRiskComm.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryRiskComm.secure_url });
+  console.log("cloudinary RiskCommunication response ", cloudinaryRiskComm,savetoDb);
 });
+
+// const CardRiskComm = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null,"./RiskComm");
+//   },
+//   filename: function (req, file, cb) {
+//     cb(null,  file.originalname);
+//   },
+// });
+
+// require("./model/RiskCommunication");
+// const RiskCommMondel = mongoose.model("RiskCommunication");
+// const RiskCommstorage = multer({ storage: CardRiskComm });
+
+// app.post("/RiskCommunication", RiskCommstorage.single("file"), async (req, res) => {
+//   console.log(req.file);
+//   const Title = req.body.Title;
+//   const Defination = req.body.Defination;
+//   const Transmition = req.body.Transmition;
+//   const Prevation = req.body.Prevation;
+//   const RiskCommunicationfileName = req.file.filename;
+//   try {
+//     await RiskCommMondel.create({ Title: Title,Defination: Defination, Transmition: Transmition,Prevation: Prevation,pdf:RiskCommunicationfileName});
+//     res.send({ status: "ok" });
+//   } catch (error) {
+//     res.json({ status: error });
+//   }
+// });
 
 // app.put('/RiskComm/:id', (req, res) => {
 //   const id = req.params.id;
@@ -14252,27 +15082,47 @@ app.get("/RiskComm", async (req, res) => {
 //////Homepage CardBottum uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const Guidlines = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null,"./Guidlines");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    cb(null, file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/Guidlines");
 const GuidlinesMondel = mongoose.model("Guidlines");
 const Guidlinesstorage = multer({ storage: Guidlines });
 
 app.post("/Guidelines", Guidlinesstorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const GuidelinesTitle = req.body.GuidelinesTitle;
-  const BottumCardsfileName = req.file.filename;
-  try {
-    await GuidlinesMondel.create({ GuidelinesTitle: GuidelinesTitle,pdf:BottumCardsfileName});
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {GuidelinesTitle} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryBulletin = await cloudinary.uploader.upload(file, {
+    folder: "Guidlines",
+     resource_type: "auto"
+  });
+try {
+  const savetoDb = await GuidlinesMondel.create({
+    GuidelinesTitle,
+    filename: originalname,
+    public_id: cloudinaryBulletin.public_id,
+    imgUrl: cloudinaryBulletin.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryBulletin.secure_url });
+  console.log("cloudinary CapacityBuilding response ", cloudinaryBulletin,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
@@ -14280,43 +15130,71 @@ app.post("/Guidelines", Guidlinesstorage.single("file"), async (req, res) => {
 
 
 
-app.get("/get-Guidlines", async (req, res) => {
+
+
+app.get("/getGuidlines", async (req, res) => {
   try {
     GuidlinesMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
 });
-
+// app.get('/get-Guidlines', async (req, res) => {
+//   try {
+//     const posts = await GuidlinesMondel.find().sort({ _id: -1 });
+//     res.json(posts);
+//   } catch (err) {
+//     res.status(500).json({ error: 'Could not retrieve posts' });
+//   }
+// });
 //////Homepage IRBPolicy uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const IRBPolicy = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null,"./IRBPolicy");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    cb(null, file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/IRBPolicy");
 const IRBPolicyMondel = mongoose.model("IRBPolicy");
 const IRBPolicystorage = multer({ storage: IRBPolicy });
 
 app.post("/IRBPolicy", IRBPolicystorage.single("file"), async (req, res) => {
-  console.log(req.file);
-  const IRBPolicyTitle = req.body.IRBPolicyTitle;
-  const IRBPolicyfileName = req.file.filename;
-  try {
-    await IRBPolicyMondel.create({ IRBPolicyTitle: IRBPolicyTitle,pdf:IRBPolicyfileName});
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {IRBPolicyTitle} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryIRBPolicy = await cloudinary.uploader.upload(file, {
+    folder: "IRBPolicy",
+     resource_type: "auto"
+  });
+try {
+  const savetoDb = await IRBPolicyMondel.create({
+    IRBPolicyTitle,
+    filename: originalname,
+    public_id: cloudinaryIRBPolicy.public_id,
+    imgUrl: cloudinaryIRBPolicy.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinaryIRBPolicy.secure_url });
+  console.log("cloudinary IRBPolicy response ", cloudinaryIRBPolicy,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
 });
-
 
 
 app.get("/get-IRBPolicy", async (req, res) => {
@@ -14328,34 +15206,81 @@ app.get("/get-IRBPolicy", async (req, res) => {
 });
 ////////////////////////////////////multer for capacity building////////////////
 // const multer = require("multer");
+// cloudinary.config({
+//   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+//   api_key: process.env.CLOUDINARY_API_KEY,
+//   api_secret: process.env.CLOUDINARY_API_SECRET,
+// });
 
 const capacityBstorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null,"./capacityB");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
+
 
 require("./model/CapacityBuilding");
 const capacityBMondel = mongoose.model("CapacityBuilding");
 const capacityBupload = multer({ storage: capacityBstorage });
 
 app.post("/capacityB", capacityBupload.single("file"), async (req, res) => {
-  console.log(req.file);
-  const TrainingTitle = req.body.TrainingTitle;
-  const TrainingDate = req.body.TrainingDate;
-  const TCertification = req.file.TCertification;
-  const capacityBfileName = req.file.filename;
-  try {
-    await capacityBMondel.create({ TrainingTitle: TrainingTitle,TrainingDate:TrainingDate,TCertification:TCertification, pdf: capacityBfileName });
-    res.send({ status: "ok" });
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {TrainingTitle,TrainingDate,TCertification} = req.body;
+  // const {originalname} = req.file;
+
+  const cloudinarycapacityB = await cloudinary.uploader.upload(file, {
+    folder: "capacityB",
+     resource_type: "auto"
+  });
+try {
+  const savetoDb = await capacityBMondel.create({
+    TrainingTitle,
+    TrainingDate,
+    TCertification,
+    filename: file.originalname,
+    public_id: cloudinarycapacityB.public_id,
+    imgUrl: cloudinarycapacityB.secure_url,
+  });
+
+  res.render("index.ejs", { url: cloudinarycapacityB.secure_url });
+  console.log("cloudinary CapacityBuilding response ", cloudinarycapacityB,savetoDb);
   } catch (error) {
     res.json({ status: error });
   }
 });
+
+// const capacityBstorage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null,"./capacityB");
+//   },
+//   filename: function (req, file, cb) {
+//     const uniqueSuffix = Date.now();
+//     cb(null, uniqueSuffix + file.originalname);
+//   },
+// });
+
+// require("./model/CapacityBuilding");
+// const capacityBMondel = mongoose.model("CapacityBuilding");
+// const capacityBupload = multer({ storage: capacityBstorage });
+
+// app.post("/capacityB", capacityBupload.single("file"), async (req, res) => {
+//   console.log(req.file);
+//   const TrainingTitle = req.body.TrainingTitle;
+//   const TrainingDate = req.body.TrainingDate;
+//   const TCertification = req.file.TCertification;
+//   const capacityBfileName = req.file.filename;
+//   try {
+//     await capacityBMondel.create({ TrainingTitle: TrainingTitle,TrainingDate:TrainingDate,TCertification:TCertification, pdf: capacityBfileName });
+//     res.send({ status: "ok" });
+//   } catch (error) {
+//     res.json({ status: error });
+//   }
+// });
 
 app.get("/get-capacityB", async (req, res) => {
   try {
@@ -14364,6 +15289,7 @@ app.get("/get-capacityB", async (req, res) => {
     });
   } catch (error) {}
 });
+
 /////////////////////////////////////capacity  building end//////////
 ////////////////////fil Reportable deases///////////////////////
 

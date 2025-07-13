@@ -1,18 +1,14 @@
 const mongoose = require("mongoose");
 
-const PolicyDocScehma = new mongoose.Schema(
-  {
- 
-    PolicyDocTitle: String,
-    PolicyDocDate: Date,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const PolicyDocScehma = new mongoose.Schema({
+  PolicyDocTitle: String,
+  PolicyDocDate: Date,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "PolicyDoc"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("PolicyDoc",PolicyDocScehma);
+module.exports = mongoose.model('PolicyDoc', PolicyDocScehma);

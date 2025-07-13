@@ -1,18 +1,35 @@
 const mongoose = require("mongoose");
 
-const CardsScehma = new mongoose.Schema(
-  {
-    FrontTitle: String,
-    Frontdescription: String,
-    FrontDetail: String,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+// const CardsScehma = new mongoose.Schema(
+//   {
+//     FrontTitle: String,
+//     Frontdescription: String,
+//     FrontDetail: String,
+//     filename:String,
+//     public_id:String,
+//     imgUrl:String
+//   },
+//    {
+//   timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+// },
+//   {
+//     collection: "Cards"
+//   }
+// );
+
+// mongoose.model("Cards", CardsScehma);
+
+const CardsScehma = new mongoose.Schema({
+  FrontTitle: String,
+  Frontdescription: String,
+  FrontDetail: String,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "Cards"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
 
-mongoose.model("Cards", CardsScehma);
+module.exports = mongoose.model('Cards', CardsScehma);

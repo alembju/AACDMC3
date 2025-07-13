@@ -1,18 +1,14 @@
 const mongoose = require("mongoose");
 
-const FeedbackScehma = new mongoose.Schema(
-  {
- 
-    FeedbackTitle: String,
-    FeedbackDate: Date,
-    pdf: String,
-  },
-   {
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+const FeedbackScehma = new mongoose.Schema({
+  FeedbackTitle: String,
+  FeedbackDate: Date,
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-  {
-    collection: "Feedback"
-  }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("Feedback",FeedbackScehma);
+module.exports = mongoose.model('Feedback', FeedbackScehma);
