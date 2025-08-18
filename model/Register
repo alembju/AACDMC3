@@ -1,7 +1,8 @@
-const mongoose = require('mongoose')
 
-const RegisterSchema= new mongoose.Schema({
-    orgname:String,
+const mongoose = require("mongoose");
+
+const RegisterSchema = new mongoose.Schema({
+   orgname:String,
     title:String,
     principal:String,
     phone:String,
@@ -18,12 +19,12 @@ const RegisterSchema= new mongoose.Schema({
     url:String,
     comments:String,
     email:String,
-    Title:String,
-    pdf: String,
-    
+  filename:String,
+  public_id:String,
+  imgUrl:String, 
 },
-{ collection: "register" }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("register" , RegisterSchema)
-//module.exports = RegisterMondel
+module.exports = mongoose.model('register', RegisterSchema);

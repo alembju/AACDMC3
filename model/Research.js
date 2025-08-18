@@ -1,6 +1,6 @@
-const mongoose = require('mongoose')
-
-const ResearchSchema= new mongoose.Schema({
+const mongoose = require("mongoose");
+  
+const ResearchSchema = new mongoose.Schema({
     NCollege:String,
     Department:String,
     StudyF:String,
@@ -31,9 +31,12 @@ const ResearchSchema= new mongoose.Schema({
     Groups:String,
     Dsharing:String,
     Reasons:String,
-    pdf: String,
+    filename:String,
+    public_id:String,
+    imgUrl:String, 
 },
-{ collection: "Researchs" }
-);  
- mongoose.model("Researchs" , ResearchSchema)
-//module.exports = ResearchMondel
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
+);
+module.exports = mongoose.model('Researchs', ResearchSchema);
