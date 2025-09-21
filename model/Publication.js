@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const PublicationScehma = new mongoose.Schema({
   PublicationTitle: String,
+  PublicationDate: Date,
   PublicationAbstract: String,
   filename:String,
   public_id:String,

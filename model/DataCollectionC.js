@@ -11,9 +11,10 @@ phone: String,
 PIemail: String,
 Grade: String,
 submitted: String,
-filename:String,
-public_id:String,
-imgUrl:String, 
+public_id: String,
+secure_url: String,
+original_filename: String,
+format: String,
 },
 {
   timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields

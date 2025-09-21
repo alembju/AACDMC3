@@ -6,25 +6,20 @@ const bodyParser = require('body-parser')
 const bcrypt = require('bcrypt')
 const nodemailer = require("nodemailer");
 const jwt = require('jsonwebtoken')
-
 const { logger } = require('./middleware/logEvents');
-
 const ImagesDescriptionMondel = require('./model/ImageDescription')
 const HealthFacilityMondel =require('./model/HealthFacilityinfo')
-//const User = require('./model/LoginModel')
 const session = require('express-session')
 const ImagesMondel = require('./model/imageDetails')
 const Blog = require('./model/Blog')
 const Form = require('./model/Form')
 const NewsFeedMondel = require('./model/NewsFeedMondel')
-//const PageMondel = require('./model/Page')
-//const IRBMondel = require('./model/IRBUpload')
-// const ImagesTMondel = require('./model/imageDetails')
 const EVENTSMondel = require('./model/Events')
 const RepDeseaseMondel = require('./model/RepDesease')
 const MongoDBStore = require('connect-mongodb-session')(session);
 const emailRoutes = require("./routes/emailRoutes");
 const dotenv = require("dotenv");
+require('dotenv').config()
 const fs = require("fs"); 
 //require('dotenv').config()
 const Component = require('./model/Component')
@@ -36,6 +31,7 @@ const port = process.env.PORT || 3000;
  
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const ImageKit = require("imagekit"); 
 
 
 
@@ -54,6 +50,12 @@ const corsOptions = {
 };
 
 const app = express();
+
+app.use((req, res, next) => {
+  req.setTimeout(600000); // 10 minutes
+  res.setTimeout(600000);
+  next();
+});
 app.use(cors())
 //Enable CORS for frontend
 // app.use(cors({
@@ -98,9 +100,22 @@ app.use("/Guidlines", express.static("Guidlines"));
 app.use("/IRBPolicy", express.static("IRBPolicy"));
 app.use("/capacityB", express.static("capacityB"));
 
+
 app.use('/Cards', express.static(path.join(__dirname, 'Cards')));
 
  app.use(express.static('BanerImage'));
+// --------------------
+// Global error handlers
+// --------------------
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+  // NOTE: in production you may want to exit process after logging:
+  // process.exit(1);
+});
+
 // app.use('/BanerImage', express.static(path.join(__dirname, 'BanerImage')));
 // app.use("/BanerImage", express.static(path.join(__dirname, '../../httpdocs/BanerImage/'))); // Create upload folder if not exists 
 // const uploadFolder = "./BanerImage"; 
@@ -232,6 +247,31 @@ const JWT_SECRET =process.env.JWT_SECRET;
       console.log(error);
     }
   });
+
+  /////////////////////////////////////////////////formula for date for reserch recieved///
+  // Function to add working days (skipping Saturday & Sunday)
+function addWorkingDays(startDate, daysToAdd) {
+  let currentDate = new Date(startDate);
+  let addedDays = 0;
+
+  while (addedDays < daysToAdd) {
+    currentDate.setDate(currentDate.getDate() + 1);
+    const day = currentDate.getDay(); // 0 = Sunday, 6 = Saturday
+    if (day !== 0 && day !== 6) {
+      addedDays++;
+    }
+  }
+  return currentDate;
+}
+
+app.post("/submit-form", (req, res) => {
+  const { submittingDate } = req.body; // e.g. "2025-09-12"
+  const afterSixWorkingDays = addWorkingDays(submittingDate, 6);
+  res.json({
+    submittingDate,
+    afterSixWorkingDays: afterSixWorkingDays.toISOString().split("T")[0], // format as YYYY-MM-DD
+  });
+});
   
 //  Student login and sighen up given by IRB//////////////////////////////////////////////
 
@@ -601,7 +641,7 @@ app.get('/Fetch-VRAM',(req, res) =>{
   .then(users => res.json(users))
   .catch(err => console.log(err))  
   })
-//////////////////////////////////////EVENT UPLOAD///////////////////
+//////////////////////////////////////Health Facility UPLOAD///////////////////
 app.post("/Add-Facility" ,(req, res) => {
   const{HRegion,HSubCity,HWoreda,HFName} = req.body
   HealthFacilityMondel.findOne({HFName: HFName})
@@ -1274,7 +1314,134 @@ app.get("/get-imageID", async (req, res) => {
     res.json({ status: error });
   }
 });
+////////////////////////////Image for Resolve/////////////
+const ResolveImage = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
 
+
+require("./model/ResolveImage");
+const ResolveImageMondel = mongoose.model("ResolveImage");
+const ResolveImag = multer({ storage: ResolveImage });
+
+app.post("/MainResolveImage", ResolveImag.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const { ResolveImageTitle, ResolveImageDescription } = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryResolveImage = await cloudinary.uploader.upload(file, {
+    folder: "ResolveImage",
+    resource_type: "auto"
+  });
+try {
+
+  const savetoDb = await ResolveImageMondel.create({
+    ResolveImageTitle,
+    ResolveImageDescription,
+    filename:originalname,
+    public_id: cloudinaryResolveImage.public_id,
+    imgUrl: cloudinaryResolveImage.secure_url,
+  });
+ 
+  res.send({ status: "ok" });
+    } catch (error) {
+      res.json({ status: error });
+    }
+});
+
+///////////////get image for Resolve  slide/////////
+app.get("/get-ResolveImage", async (req, res) => {
+  try {
+    ResolveImageMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+///////////////////////News for Resolve///////////
+
+const ResolveNews = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+
+require("./model/ResolveNews");
+const ResolveNewsMondel = mongoose.model("ResolveNews");
+const ResolveNewsMondelUpload = multer({ storage: ResolveNews });
+
+app.post("/CreatResolveCards", ResolveNewsMondelUpload.single("Image"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const { FrontResolveTitle, FrontDate,Resolvedescription } = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryResolveNews = await cloudinary.uploader.upload(file, {
+    folder: "ResolveNews",
+    resource_type: "auto"
+  });
+try {
+
+  const savetoDb = await ResolveNewsMondel.create({
+    FrontResolveTitle,
+    FrontDate,
+    Resolvedescription,
+    filename:originalname,
+    public_id: cloudinaryResolveNews.public_id,
+    imgUrl: cloudinaryResolveNews.secure_url,
+  });
+ 
+  res.send({ status: "ok" });
+    } catch (error) {
+      res.json({ status: error });
+    }
+});
+
+///fetching file from Cards ----------
+
+app.get('/fetching-ResolveCards', async(req, res) =>{
+    
+  //ResearchMondel.find()
+  const allUser = await ResolveNewsMondel.find({}).sort({createdAt: -1});
+const page = parseInt(req.query.page)
+const limit = parseInt(req.query.limit)
+
+const startIndex = (page - 1) * limit
+const lastIndex = (page) * limit
+
+const results = {}
+results.totalUser=allUser.length;
+results.pageCount=Math.ceil(allUser.length/limit);
+
+if (lastIndex < allUser.length) {
+  results.next = {
+    page: page + 1,
+  }
+}
+if (startIndex > 0) {
+  results.prev = {
+    page: page - 1,
+  }
+}
+results.result = allUser.slice(startIndex, lastIndex);
+res.json(results)
+  //.then(user => res.json(user))
+  //.catch(err => console.log(err))  
+  ///passswpred---------invg pgzi yrbs qntc----
+  })
 ////////////////////////////GIF in bottum cared/////////// 
 const GIF = multer.diskStorage({
   // destination: './public/uploads',
@@ -1465,19 +1632,20 @@ const Planning = multer.diskStorage({
  const PlanningMondel = mongoose.model("Planning");
 const PlanningImag = multer({ storage: Planning });
 
-app.post("/Planning", PlanningImag.single("file"), async (req, res) => {
+app.post("/TopLeders", PlanningImag.single("file"), async (req, res) => {
   //  console.log("This is my file ",req.file)
   const file = req.file.path;
-  const { PPosition, PEducation } = req.body;
+  const { TPosition, TEducation } = req.body;
   const {originalname} = req.file;
 
   const cloudinaryPlanning = await cloudinary.uploader.upload(file, {
-    folder: "Planning",
+    folder: "TopLeders",
+    resource_type: "auto"
   });
 
   const savetoDb = await PlanningMondel.create({
-    PPosition,
-    PEducation,
+    TPosition,
+    TEducation,
     filename:originalname,
     public_id: cloudinaryPlanning.public_id,
     imgUrl: cloudinaryPlanning.secure_url,
@@ -1497,6 +1665,62 @@ app.get("/get-Planning", async (req, res) => {
     res.json({ status: error });
   }
 });
+
+////////////////////////////////////Abot Us Top Ledere Photo///////////
+const TopLeders = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+
+ require("./model/TopLeders");
+ const TopLedersMondel = mongoose.model("TopLeders");
+const TopLedersImag = multer({ storage: TopLeders });
+
+app.post("/TopLeders", TopLedersImag.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const { PPosition, PEducation } = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryTopLeders = await cloudinary.uploader.upload(file, {
+    folder: "TopLeders",
+  });
+
+  const savetoDb = await TopLedersMondel.create({
+    PPosition,
+    PEducation,
+    filename:originalname,
+    public_id: cloudinaryTopLeders.public_id,
+    imgUrl: cloudinaryTopLeders.secure_url,
+  });
+ try {
+  res.send({ status: "ok" });
+} catch (error) {
+  res.json({ status: error });
+}
+});
+app.get("/get-TopLeders", async (req, res) => {
+  try {
+    TopLedersMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+////////////////////////Delet Top leader/////////////////////////////
+ app.delete('/deletTopLeders/:id',(req, res) =>{
+  const id = req.params.id;
+  TopLedersMondel.findByIdAndDelete({_id: id})
+  .then(res => res.json(res))
+  .catch(err => res.json(err))
+  })
 ////////////////////////Delet Banner/////////////////////////////
  app.delete('/deletPlanning/:id',(req, res) =>{
   const id = req.params.id;
@@ -1666,7 +1890,7 @@ app.post("/Esend", attached.single("file"), async(req, res) =>{
   const {originalname} = req.file;
    const cloudinaryEsend = await cloudinary.uploader.upload(file, {
     folder: "attached",
-    resource_type: 'raw',
+    resource_type: 'Auto',
     format: 'pdf',
     allowed_formats: ['pdf']
   });
@@ -1856,6 +2080,59 @@ app.post("/ContactUs", attacheds.single("documents"), async(req, res) =>{
     
 }); 
 
+
+///////////////////////////Rummer  email/////////////
+const EmailRummer = multer.diskStorage({
+  destination:function(req, file, cb){
+      cb(null,('./EmailRummer'));
+  },
+  filename:function(req,file,cb){
+      const name = Date.now()+'-'+file.originalname;
+      cb(null,name);
+  }
+});
+
+const Rummer = multer({ Emailstorage:EmailRummer });
+const transportersRummer = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  secure: false, // true for 465, false for other ports
+  // logger:true,
+  // debug:true,
+  // secureConnection:false,
+  auth: {
+    user: process.env.SMTP_MAIL, // generated ethereal user
+    pass: process.env.SMTP_PASSWORD, // generated ethereal password
+  },
+})
+app.post("/Rummer", Rummer.single("email"), async(req, res) =>{
+  const { Rummer,RSubCity, Woreda,Place, RType} = req.body;
+  const file= req.file;
+  console.log(Rummer,RSubCity,Woreda,Place,RType,file);
+
+  const mailOptions = {
+    from: process.env.SMTP_MAIL,
+    to:  "alem845070@gmail.com",
+    subject: Rummer,
+    text: Place,
+    html: `<p>Place:${Place}</p><p>Subcity:${RSubCity}</p><p>Woreda:${Woreda}</p><p>Phon Number: ${RType}</p>`,
+    attachement:  [
+      {   
+       filename: file,
+       
+      }
+  ]
+  };
+  await transportersRummer.sendMail(mailOptions, function(error, info){
+    if(error){
+        console.log(error);
+    }
+    else{
+        console.log('Mail sent successfully:- ', info.reponse);
+    }
+}); 
+    
+}); 
 
 ////////////////////////////email attached file//////////////////////
 /*app.get("/", (req, res) => {
@@ -2174,6 +2451,54 @@ app.post("/api/forms", async (req, res) => {
   } catch (error) {}
 });*/
 ////////////////////////////////////DataCollectionc///////////
+// const DataCollectionC = multer.diskStorage({
+//   // destination: './public/uploads',
+//   filename: function (req, file, cb) {
+//     cb(
+//       null,
+//       file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+//     );
+//   },
+// });
+
+
+//  require("./model/DataCollectionC");
+
+// const DataCollectionCMondel  = mongoose.model("DataCollectionC" )
+// const DataCollectionCupload = multer({ storage: DataCollectionC });
+
+// app.post("/DataCollectionC", DataCollectionCupload.single("file"), async (req, res) => {
+//   //  console.log("This is my file ",req.file)
+//   const file = req.file.path;
+//   const {Name,PhonePI,email,title,NUniversity,Nadvisor,phone,PIemail,Grade,submitted} = req.body;
+//   const {originalname} = req.file;
+
+//   const cloudinaryDataCollectionC = await cloudinary.uploader.upload(file, {
+//     folder: "DataCollectionC",
+//   });
+
+//   const savetoDb = await DataCollectionCMondel.create({
+//     Name,
+//     PhonePI,
+//     email,
+//     title,
+//     NUniversity,
+//     Nadvisor,
+//     phone,
+//     PIemail,
+//     Grade,
+//     submitted,
+//     filename:originalname,
+//     public_id: cloudinaryDataCollectionC.public_id,
+//     imgUrl: cloudinaryDataCollectionC.secure_url,
+//   });
+//  try {
+//   res.send({ status: "ok" });
+// } catch (error) {
+//   res.json({ status: error });
+// }
+// });
+////////////////////////////////////DataCollectionc///////////
 const DataCollectionC = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -2190,37 +2515,54 @@ const DataCollectionC = multer.diskStorage({
 const DataCollectionCMondel  = mongoose.model("DataCollectionC" )
 const DataCollectionCupload = multer({ storage: DataCollectionC });
 
-app.post("/DataCollectionC", DataCollectionCupload.single("file"), async (req, res) => {
-  //  console.log("This is my file ",req.file)
-  const file = req.file.path;
-  const {Name,PhonePI,email,title,NUniversity,Nadvisor,phone,PIemail,Grade,submitted} = req.body;
-  const {originalname} = req.file;
 
-  const cloudinaryDataCollectionC = await cloudinary.uploader.upload(file, {
-    folder: "DataCollectionC",
-  });
+app.post("/DataCollectionC", DataCollectionCupload.array("files", 10), async (req, res) => {
+  try {
+    console.log("📩 Received files:", req.files?.map(f => f.originalname));
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+ const {Name,PhonePI,email,title,NUniversity,Nadvisor,phone,PIemail,Grade,submitted} = req.body;
+  // const {originalname} = req.file;
+  
 
-  const savetoDb = await DataCollectionCMondel.create({
-    Name,
-    PhonePI,
-    email,
-    title,
-    NUniversity,
-    Nadvisor,
-    phone,
-    PIemail,
-    Grade,
-    submitted,
-    filename:originalname,
-    public_id: cloudinaryDataCollectionC.public_id,
-    imgUrl: cloudinaryDataCollectionC.secure_url,
-  });
- try {
-  res.send({ status: "ok" });
-} catch (error) {
-  res.json({ status: error });
-}
+  const uploadedFiles = [];
+
+    for (const file of req.files) {
+      const result = await cloudinary.uploader.upload(file.path, {
+        resource_type: "auto", folder: "DataCollectionC"
+      });
+
+      // ✅ Save to MongoDB
+      const savedFile = await DataCollectionCMondel.create({
+        Name,
+        PhonePI,
+        email,
+        title,
+        NUniversity,
+        Nadvisor,
+        phone,
+        PIemail,
+        Grade,
+        submitted,
+        public_id: result.public_id,
+        secure_url: result.secure_url,
+        original_filename: file.originalname,
+        format: result.format,
+      });
+
+      uploadedFiles.push(savedFile);
+
+      // ✅ Remove file from local storage after uploading
+      fs.unlinkSync(file.path);
+    }
+
+   res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
 });
+
 //multer------------------------------------------------------------
 //const multer = require("multer");
 
@@ -12166,6 +12508,108 @@ app.get("/", async (req, res) => {
 //multer------------------------------------------------------------
 //const multer = require("multer");
 ////////////////////////////////////DataCollectionP///////////
+// const ResearchM = multer.diskStorage({
+//   // destination: './public/uploads',
+//   filename: function (req, file, cb) {
+//     cb(
+//       null,
+//       file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+//     );
+//   },
+// });
+
+
+// require("./model/Research");
+
+// const ResearchMondel = mongoose.model("Researchs" )
+// const ResearchStor = multer({ storage: ResearchM });
+
+// app.post("/ResearchP", upload.array("files", 10), async (req, res) => {
+//   try {
+//     console.log("📩 Received files:", req.files?.map(f => f.originalname));
+//     if (!req.files || req.files.length === 0) {
+//       return res.status(400).json({ message: "No files uploaded" });
+//     }
+//   const { NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
+
+//   const streamUpload = (fileBuffer) => {
+//       return new Promise((resolve, reject) => {
+//         const stream = cloudinary.uploader.upload_stream(
+//           { resource_type: "auto", folder: "ReserchProposal" },
+//           (error, result) => {
+//             if (error) {
+//               console.error("❌ Cloudinary error:", error);
+//               reject(error);
+//             } else {
+//               resolve(result);
+//             }
+//           }
+//         );
+//         stream.end(fileBuffer);
+//       });
+//     };
+
+  
+//  const results = [];
+//   for (let file of req.files) {
+//   const uploaded = await streamUpload(file.path);
+//   console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
+//   const savedFile = await ResearchMondel.create({
+//     NCollege,
+//     Department,
+//     TDepartment,
+//     StudyF,
+//     Nadvisor,
+//     email,
+//     phone,
+//     PI,
+//     PIPhone,
+//     PIemail,
+//     Title,
+//     FocusA,
+//     SPeriodB,
+//     SPeriodE,
+//     ConductS,
+//     Rmethods,
+//     Study,
+//     Design,
+//     TDesign,
+//     geographicA,
+//     TGeographicA,
+//     Slocation,
+//     Gender,
+//     TGender,
+//     populations,
+//     MicroD,
+//     Eelectronically,
+//     Tools,
+//     Tcollection,
+//     TTcollection,
+//     Budget,
+//     Geocoordinate,
+//     Groups,
+//     Dsharing,
+//     selectedChoices,
+//     Reasons,
+//     NewColl,
+//     public_id: uploaded.public_id,
+//     url: uploaded.secure_url,
+//     original_filename: uploaded.original_filename,
+//     format: uploaded.format,
+//    });
+//       results.push(savedFile);
+//     }
+
+//    res.json({ message: "Uploaded & saved successfully", files: results });
+//   } catch (err) {
+//     console.error("❌ Upload error (server):", err);
+//     res.status(500).json({ message: "Upload failed", error: err.message });
+//   }
+// });
+
+//////Homepage LabGuidlines/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
 const ResearchM = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -12182,61 +12626,110 @@ require("./model/Research");
 const ResearchMondel = mongoose.model("Researchs" )
 const ResearchStor = multer({ storage: ResearchM });
 
-app.post("/ResearchP", ResearchStor.single("file"), async (req, res) => {
-  //  console.log("This is my file ",req.file)
-   const file = req.file.path;
-  const { NCollege,Department,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,geographicA,Slocation,Gender,populations,MicroD,Eelectronically,Tools,Tcollection,Budget,Geocoordinate,Groups,Dsharing,Reasons } = req.body;
-  const {originalname} = req.file;
+app.post("/ResearchP", upload.array("files", 10), async (req, res) => {
+  try {
+    console.log("📩 Received files:", req.files?.map(f => f.originalname));
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+  const { NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
+  // const {originalname} = req.file;
+  
 
-  const cloudinaryResearchP = await cloudinary.uploader.upload(file, {
-    folder: "ReserchProposal",
-    resource_type: "auto"
-  });
+  const uploadedFiles = [];
 
-  const savetoDb = await ResearchMondel.create({
-    NCollege,
-    Department,
-    StudyF,
-    Nadvisor,
-    email,
-    phone,
-    PI,
-    PIPhone,
-    PIemail,
-    Title,
-    FocusA,
-    SPeriodB,
-    SPeriodE,
-    ConductS,
-    Rmethods,
-    Study,
-    Design,
-    geographicA,
-    Slocation,
-    Gender,
-    populations,
-    MicroD,
-    Eelectronically,
-    Tools,
-    Tcollection,
-    Budget,
-    Geocoordinate,
-    Groups,
-    Dsharing,
-    Reasons,
-    filename:originalname,
-    public_id: cloudinaryResearchP.public_id,
-    imgUrl: cloudinaryResearchP.secure_url,
-  });
- try {
-  res.send({ status: "ok" });
-  // res.render("index.ejs", { url: cloudinaryAbotUs.secure_url });
-  // console.log("cloudinary AbotUs ", cloudinaryAbotUs,savetoDb);
-  } catch (err) {
-    res.status(500).json({ error: 'Upload failed' });
+    for (const file of req.files) {
+      const result = await cloudinary.uploader.upload(file.path, {
+        resource_type: "auto", folder: "ReserchProposal"
+      });
+
+      // ✅ Save to MongoDB
+      const savedFile = await ResearchMondel.create({
+         NCollege,
+        Department,
+        TDepartment,
+        StudyF,
+        Nadvisor,
+        email,
+        phone,
+        PI,
+        PIPhone,
+        PIemail,
+        Title,
+        FocusA,
+        SPeriodB,
+        SPeriodE,
+        ConductS,
+        Rmethods,
+        Study,
+        Design,
+        TDesign,
+        geographicA,
+        TGeographicA,
+        Slocation,
+        Gender,
+        TGender,
+        populations,
+        MicroD,
+        Eelectronically,
+        Tools,
+        Tcollection,
+        TTcollection,
+        Budget,
+        Geocoordinate,
+        Groups,
+        Dsharing,
+        selectedChoices,
+        Reasons,
+        NewColl,
+        public_id: result.public_id,
+        secure_url: result.secure_url,
+        original_filename: file.originalname,
+        format: result.format,
+      });
+
+      uploadedFiles.push(savedFile);
+
+      // ✅ Remove file from local storage after uploading
+      fs.unlinkSync(file.path);
+    }
+
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
   }
 });
 
+// Fetch all uploaded file info
+app.get("/files", async (req, res) => {
+  try {
+    const files = await ResearchMondel.find().sort({ createdAt: -1 });
+    res.json(files);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch files" });
+  }
+});
+
+ ////////////////////////////fetchinf Number of colledg for Reserch dashbored////////////
+        app.get("/getAllColledge", async (req, res) => {
+          let query = {};
+          const searchData = req.query.search;
+          if (searchData) {
+            query = {
+              $or: [
+                { NCollege: { $regex: searchData, $options: "i" } },
+                { Study: { $regex: searchData, $options: "i" } },
+              ],
+            };
+          }
+        
+          try {
+            const allUser = await ResearchMondel.find(query);
+            res.send({ status: "ok", data: allUser });
+          } catch (error) {
+            console.log(error);
+          }
+        });
 // //multer------------------------------------------------------------
 // //const multer = require("multer");
 
@@ -13320,6 +13813,41 @@ app.post("/IRBUpload" ,(req, res) => {
 //////bulletin uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");"./FinalReserchPaper"
+const Colledge = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, "./Colledge");
+    },
+    Colledgefilename: function (req, file, cb) {
+      const uniqueSuffix = Date.now();
+      cb(null, uniqueSuffix + file.originalname);
+    },
+  });
+  
+  require("./model/Colledge");
+  const ColledgeMondel = mongoose.model("Colledge");
+  const ColledgeStorage = multer({ storage: Colledge });
+  
+  app.post("/CreatCollName", ColledgeStorage.single("file"), async (req, res) => {
+    console.log(req.file);
+    const CollName = req.body.CollName;
+  //  const BulletinfileName = req.file.filename;
+    try {
+      await ColledgeMondel.create({CollName:CollName });
+      res.send({ status: "ok" });
+    } catch (error) {
+      res.json({ status: error });
+    }
+  });
+  app.get('/ColledgeList',(req, res) =>{
+    
+    ColledgeMondel.find({}).sort({createdAt: -1})
+    .then(users => res.json(users))
+    .catch(err => console.log(err))  
+    })
+
+//////bulletin uploaded/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");"./FinalReserchPaper"
 const Bulletin = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -13341,12 +13869,15 @@ app.post("/WeekelyBuletin", BulletinStorage.single("file"), async (req, res) => 
   const {Title,EPIWeek,BullitenDate} = req.body;
   const {originalname} = req.file;
 
-  const cloudinaryBulletin = await cloudinary.uploader.upload(file, {
+  const cloudinaryBulletin = await await cloudinary.uploader.upload(file,  {
     folder: "Bulletin",
    resource_type: 'raw',
-    format: 'pdf',
-    allowed_formats: ['pdf']
+    // format: 'pdf',
+    // allowed_formats: ['pdf'],
+     type: "upload",         // 👈 PUBLIC (no signed URL needed)
   });
+  fs.unlinkSync(req.file.path); // Optional: remove file after upload
+
 try {
   const savetoDb = await BulletinMondel.create({
     Title,
@@ -13356,11 +13887,128 @@ try {
     public_id: cloudinaryBulletin.public_id,
     imgUrl: cloudinaryBulletin.secure_url,
   });
-
+//res.json({ imgUrl: cloudinaryBulletin.secure_url})
   res.send({ status: "ok" });
   } catch (error) {
     res.json({ status: error });
   }
+});
+
+
+// ✅ Download signed PDF
+app.get(":id", async (req, res) => {
+  try {
+    const url = cloudinary.v2.utils.private_download_url(
+      req.params.id,
+      "pdf",
+      { resource_type: "raw", type: "authenticated" }
+    );
+    res.json({ url });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6️⃣ List PDFs (for Download Page)
+app.get("/pdfs", async (req, res) => {
+  try {
+    const pdfs = await BulletinMondel.find();
+    res.json(pdfs);
+  } catch (err) {
+    console.error("Fetch Error:", err);
+    res.status(500).json({ message: "Failed to fetch PDFs" });
+  }
+});
+// cloudinary.config({
+// ImageKit config
+// const imagekBullet = new ImageKit({
+//   publicKey: "process.env.IMAGEKIT_PUBLIC_KEY",
+//   privateKey: "process.env.IMAGEKIT_PRIVATE_KEY",
+//   urlEndpoint: "process.env.IMAGEKIT_URL_ENDPOINT",
+// });
+// const Bulletin = multer.diskStorage({
+//   // destination: './public/uploads',
+//   filename: function (req, file, cb) {
+//     cb(
+//       null,
+//       file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+//     );
+//   },
+// });
+
+
+// require("./model/Bulletin");
+// const BulletinMondel = mongoose.model("Bulletin");
+// const BulletinStorage = multer({ storage: Bulletin });
+
+// app.post("/WeekelyBuletin", BulletinStorage.single("file"), async (req, res) => {
+// try {
+//     if (!req.file) {
+//       return res.status(400).json({ error: "No file uploaded" });
+//     }
+//     if (req.file.mimetype !== "application/pdf") {
+//       return res.status(400).json({ error: "Only PDF files allowed" });
+//     }
+//         // const file = req.file.path;
+//         // const {Title,EPIWeek,BullitenDate} = req.body;
+//         const fileName = `${Date.now()}_${req.file.originalname}`;
+
+//     // Upload to ImageKit
+//     const result = await imagekBullet.upload({
+//       file: req.file.buffer, // buffer from multer
+//       fileName, // Date.now() + "_" + req.file.originalname,
+//       folder: "/pdfs", // optional folder in your ImageKit account
+//       useUniqueFileName: true,
+//       isPrivateFile: true,
+//     });
+
+//   fs.unlinkSync(req.file.path); // Optional: remove file after upload
+    
+ 
+//     // Save metadata to MongoDB
+  
+//         const doc = await BulletinMondel.create({
+//         Title,
+//         EPIWeek,
+//         BullitenDate,
+//         fileName: result.name || fileName,
+//         fileId: result.fileId,
+//         url: result.url || null,
+//          isPrivate: true,
+//         mimeType: req.file.mimetype,
+//         size: req.file.size,
+//         // uploadedBy: req.body.uploadedBy || "anonymous",
+//         });
+
+//   // const savetoDb = await BulletinMondel.create({
+//   //   Title,
+//   //   EPIWeek,
+//   //   BullitenDate,
+//   //   filename: originalname,
+//   //   public_id: cloudinaryBulletin.public_id,
+//   //   imgUrl: cloudinaryBulletin.secure_url,
+//   // });
+// //res.json({ imgUrl: cloudinaryBulletin.secure_url})
+//    res.json({ message: "Uploaded", file: doc });
+//   } catch (err) {
+//     console.error("Upload failed:", err);
+//     res.status(500).json({ error: err.message });
+//   }
+  
+// });
+
+// ➤ Download PDF (signed URL)
+app.get("/api/download/:fileId", async (req, res) => {
+  const doc = await FileModel.findOne({ fileId: req.params.fileId });
+  if (!doc) return res.status(404).json({ error: "Not found" });
+
+  const path = `${process.env.IMAGEKIT_FOLDER}/${doc.fileName}`;
+  const signedUrl = imagekit.getSignedUrl({
+    path,
+    expireSeconds: parseInt(process.env.SIGNED_URL_EXPIRY_SECONDS || "300", 10),
+  });
+
+  res.json({ signedUrl });
 });
 
 
@@ -13412,10 +14060,22 @@ app.get("/get-Bulliten", async (req, res) => {
     });
   } catch (error) {}
 });
-//fetching file from Bulletin ----------
+// //fetching file from Bulletin ----------
+// //Download PDF (forces download) 
+// app.get("/download-pdf", (req, res) => { 
+//   const { url } = req.query; // Cloudinary PDF URL passed from frontend 
+//   if (!url || !url.endsWith(".pdf")) 
+//     { 
+//       return res.status(400).json({ 
+//         error: "Only PDF files can be downloaded." }); 
+//       } res.setHeader("Content-Disposition", "attachment; filename=file.pdf"); 
+//       res.redirect(url); 
+//     }); 
+   
+    
 
 app.get('/fetching-Bulliten', async(req, res) =>{
-    
+     const fileUrl = req.query.url;
   //ResearchMondel.find()
   const allUser = await BulletinMondel.find({}).sort({createdAt: -1});
 const page = parseInt(req.query.page)
@@ -13445,10 +14105,10 @@ res.json(results)
   ///passswpred---------invg pgzi yrbs qntc----
   })
 
-/////bulletin uploaded/////////////////////////////////////////////////////////
+/////bulletin CaseBasedF/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");"./FinalReserchPaper"
-const SUpdate = multer.diskStorage({
+const CaseBasedF = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
     cb(
@@ -13459,29 +14119,29 @@ const SUpdate = multer.diskStorage({
 });
 
 
-require("./model/SUpdate");
-const SUpdateMondel = mongoose.model("SUpdate");
-const SUpdateStorage = multer({ storage: SUpdate });
+require("./model/CaseBasedF");
+const CaseBasedFMondel = mongoose.model("CaseBasedF");
+const CaseBasedFStorage = multer({ storage: CaseBasedF });
 
-app.post("/SUpdate", SUpdateStorage.single("file"), async (req, res) => {
+app.post("/CaseBasedF", CaseBasedFStorage.single("Casefile"), async (req, res) => {
   //  console.log("This is my file ",req.file)
   const file = req.file.path;
-  const {Title,SUpdateDate} = req.body;
+  const {CaseBasedTitle,CaseBasedUDate} = req.body;
   const {originalname} = req.file;
 
-  const cloudinarySUpdate = await cloudinary.uploader.upload(file, {
+  const cloudinaryCaseBasedF = await cloudinary.uploader.upload(file, {
     folder: "SUpdate",
-   resource_type: 'raw',
-    format: 'pdf',
-    allowed_formats: ['pdf']
+   resource_type: 'auto',
+    // format: 'pdf',
+    // allowed_formats: ['pdf']
   });
   try {
-  const savetoDb = await SUpdateMondel.create({
-    Title,
-    SUpdateDate,
+  const savetoDb = await CaseBasedFMondel.create({
+    CaseBasedTitle,
+    CaseBasedUDate,
     filename: originalname,
-    public_id: cloudinarySUpdate.public_id,
-    imgUrl: cloudinarySUpdate.secure_url,
+    public_id: cloudinaryCaseBasedF.public_id,
+    imgUrl: cloudinaryCaseBasedF.secure_url,
   });
 
   res.send({ status: "ok" });
@@ -13490,9 +14150,167 @@ app.post("/SUpdate", SUpdateStorage.single("file"), async (req, res) => {
   }
 });
 
-app.get("/get-SUpdate", async (req, res) => {
+app.get("/get-CaseBasedF", async (req, res) => {
   try {
-    SUpdateMondel.find({}).sort({createdAt: -1}).then((data) => {
+    CaseBasedFMondel.find({}).sort({createdAt: -1}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+/////bulletin DailyReport/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");"./FinalReserchPaper"
+const DailyReport = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+
+require("./model/DailyReport");
+const DailyReportMondel = mongoose.model("DailyReport");
+const DailyReportStorage = multer({ storage: DailyReport });
+
+app.post("/DailyR", DailyReportStorage.single("Dailyfile"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {DailyReportTitle,DailyReportDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryDailyReport = await cloudinary.uploader.upload(file, {
+    folder: "DailyReport",
+   resource_type: 'auto',
+    // format: 'pdf',
+    // allowed_formats: ['pdf']
+  });
+  try {
+  const savetoDb = await DailyReportMondel.create({
+    DailyReportTitle,
+    DailyReportDate,
+    filename: originalname,
+    public_id: cloudinaryDailyReport.public_id,
+    imgUrl: cloudinaryDailyReport.secure_url,
+  });
+
+  res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-DailyR", async (req, res) => {
+  try {
+    DailyReportMondel.find({}).sort({createdAt: -1}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+
+/////bulletin Linelist/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");"./FinalReserchPaper"
+const Linelist = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+
+require("./model/Linelist");
+const LinelistMondel = mongoose.model("Linelist");
+const LinelistStorage = multer({ storage: Linelist });
+
+app.post("/LinelistT", LinelistStorage.single("LineListfile"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {LineListTitle,LineListDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryLinelist = await cloudinary.uploader.upload(file, {
+    folder: "Linelist",
+   resource_type: 'auto',
+    // format: 'pdf',
+    // allowed_formats: ['pdf']
+  });
+  try {
+  const savetoDb = await LinelistMondel.create({
+    LineListTitle,
+    LineListDate,
+    filename: originalname,
+    public_id: cloudinaryLinelist.public_id,
+    imgUrl: cloudinaryLinelist.secure_url,
+  });
+
+  res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-Linelist", async (req, res) => {
+  try {
+    LinelistMondel.find({}).sort({createdAt: -1}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+
+/////bulletin WeeklyReport/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");"./FinalReserchPaper"
+const WeeklyReport = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+
+require("./model/WeeklyReport");
+const WeeklyReportMondel = mongoose.model("WeeklyReport");
+const WeeklyReportStorage = multer({ storage: WeeklyReport });
+
+app.post("/WeekelyR", WeeklyReportStorage.single("Weeklyfile"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {WeeklyReportTitle,WeeklyReportDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryWeeklyReport = await cloudinary.uploader.upload(file, {
+    folder: "WeeklyReport",
+   resource_type: 'auto',
+    // format: 'pdf',
+    // allowed_formats: ['pdf']
+  });
+  try {
+  const savetoDb = await WeeklyReportMondel.create({
+    WeeklyReportTitle,
+    WeeklyReportDate,
+    filename: originalname,
+    public_id: cloudinaryWeeklyReport.public_id,
+    imgUrl: cloudinaryWeeklyReport.secure_url,
+  });
+
+  res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-WeeklyR", async (req, res) => {
+  try {
+    WeeklyReportMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
@@ -13933,7 +14751,7 @@ const PublicationStorage = multer({ storage: Publication });
 app.post("/Publication", PublicationStorage.single("file"), async (req, res) => {
   //  console.log("This is my file ",req.file)
   const file = req.file.path;
-  const {PublicationTitle,PublicationAbstract} = req.body;
+  const {PublicationTitle,PublicationDate,PublicationAbstract} = req.body;
   const {originalname} = req.file;
 
   const cloudinaryPublication = await cloudinary.uploader.upload(file, {
@@ -13943,6 +14761,7 @@ app.post("/Publication", PublicationStorage.single("file"), async (req, res) => 
   try {
   const savetoDb = await PublicationMondel.create({
     PublicationTitle,
+    PublicationDate,
     PublicationAbstract,
     filename: originalname,
     public_id: cloudinaryPublication.public_id,
@@ -13963,6 +14782,85 @@ app.get("/get-Publication", async (req, res) => {
     });
   } catch (error) {}
 });
+
+//AAPHEML Research Unit Publication/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
+const TestMultipleUpload = multer.memoryStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+
+require("./model/MultipleUpload");
+const MultipleUploadMondel = mongoose.model("MultipleUpload");
+const MultipleUploadStorage = multer({ storage: TestMultipleUpload });
+
+// Upload multiple files and save info to MongoDB
+app.post("/MultipleUpload", upload.array("files", 10), async (req, res) => {
+  try {
+    console.log("📩 Received files:", req.files?.map(f => f.originalname));
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+    // const file = req.file.path;
+  const { NCollege,NewColl} = req.body;
+
+
+    const streamUpload = (fileBuffer) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { resource_type: "auto", folder: "mern_uploads" },
+          (error, result) => {
+            if (error) {
+              console.error("❌ Cloudinary error:", error);
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        stream.end(fileBuffer);
+      });
+    };
+
+    const results = [];
+    for (let file of req.files) {
+      const uploaded = await streamUpload(file.buffer);
+      console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
+      const savedFile = await MultipleUploadMondel.create({
+         NCollege,
+        NewColl,
+        public_id: uploaded.public_id,
+        url: uploaded.secure_url,
+        original_filename: uploaded.original_filename,
+        format: uploaded.format,
+      });
+      results.push(savedFile);
+    }
+
+    res.json({ message: "Uploaded & saved successfully", files: results });
+  } catch (err) {
+    console.error("❌ Upload error (server):", err);
+    res.status(500).json({ message: "Upload failed", error: err.message });
+  }
+});
+
+// Fetch all uploaded file info
+app.get("/files", async (req, res) => {
+  try {
+    const files = await MultipleUploadMondel.find().sort({ createdAt: -1 });
+    res.json(files);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch files" });
+  }
+});
+
 
 //Education & Training by AAPHEML Research Unit /////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
@@ -14349,7 +15247,7 @@ const Cardstorage = multer({ storage: Cards });
 app.post("/CreatCards", Cardstorage.single("file"), async (req, res) => {
   //  console.log("This is my file ",req.file)
   const file = req.file.path;
-  const { FrontTitle, Frontdescription,FrontDetail } = req.body;
+  const { FrontTitle,FrontDate, Frontdescription,FrontDetail } = req.body;
 
   const cloudinaryCards = await cloudinary.uploader.upload(file, {
     folder: "Cards",
@@ -14358,6 +15256,7 @@ app.post("/CreatCards", Cardstorage.single("file"), async (req, res) => {
   try{
   const savetoDb = await CardsMondel.create({
     FrontTitle,
+    FrontDate,
     Frontdescription,
     FrontDetail,
     filename: file.originalname,
@@ -14387,7 +15286,12 @@ app.get('/get-Cards/:id', (req, res) => {
   .then(post => res.json(post))
   .catch(err => console.log(err))
 })
-
+app.get('/DetailNews/:id', (req, res) => {
+  const id = req.params.id
+  CardsMondel.findById({_id: id})
+  .then(post => res.json(post))
+  .catch(err => console.log(err))
+})
 // app.put('/update/:id', (req, res) => {
 //   const id = req.params.id;
 //   CardsMondel.findByIdAndUpdate({_id: id}, {
@@ -15309,22 +16213,21 @@ app.post("/LatestUpdate", LatestUpdatetorage.single("file"), async (req, res) =>
 
   const cloudinaryLatestUpdate = await cloudinary.uploader.upload(file, {
     folder: "LatestUpdate",
-    resource_type: "auto"
+    resource_type: "Auto"
   });
-
+try {
   const savetoDb = await LatestUpdateMondel.create({
     LatestUpdateTitle,
     LatestUpdateDate,
+  
     filename: originalname,
     public_id: cloudinaryLatestUpdate.public_id,
     imgUrl: cloudinaryLatestUpdate.secure_url,
   });
-  try {
-  res.render("index.ejs", { url: cloudinaryLatestUpdate.secure_url });
-  console.log("cloudinary response ", cloudinaryLatestUpdate,savetoDb);
-} catch (error) {
-  res.json({ status: error });
-}
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
 });
 
 app.get("/get-LatestUpdate", async (req, res) => {
@@ -15336,7 +16239,58 @@ app.get("/get-LatestUpdate", async (req, res) => {
     res.json({ status: error });
   }
 });
+//////bulletin uploaded/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");"./FinalReserchPaper"
+const Info = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, "./Info");
+    },
+    Colledgefilename: function (req, file, cb) {
+      const uniqueSuffix = Date.now();
+      cb(null, uniqueSuffix + file.originalname);
+    },
+  });
+  
+  require("./model/Info");
+  const InfoMondel = mongoose.model("Info");
+  const InfoStorage = multer({ storage: Info });
+  
+  app.post("/Info", InfoStorage.single("file"), async (req, res) => {
+    console.log(req.file);
+    const LatestInfo = req.body.LatestInfo;
+  //  const BulletinfileName = req.file.filename;
+    try {
+      await InfoMondel.create({LatestInfo:LatestInfo});
+      res.send({ status: "ok" });
+    } catch (error) {
+      res.json({ status: error });
+    }
+  });
 
+///////////////get Latest information in laboratory/////////
+app.get("/get-LUpdate", async (req, res) => {
+  try {
+    InfoMondel.find({}).sort({createdAt: -1}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+  // app.get('/get-LUpdate',(req, res) =>{
+    
+  //   InfoMondel.find({}).sort({createdAt: -1})
+  //   .then(users => res.json(users))
+  //   .catch(err => console.log(err))  
+  //   })
+// app.get('/get-LUpdate/:id', (req, res) => {
+//   const id = req.params.id
+//   InfoMondel.findById({_id: id})
+//   .then(post => res.json(post))
+//   .catch(err => console.log(err))
+// })
 
 //////Homepage Feedback
 /////////////////////////////////////////////////////////
@@ -15364,7 +16318,7 @@ app.post("/Feedback", Feedbacktorage.single("file"), async (req, res) => {
 
   const cloudinaryFeedback = await cloudinary.uploader.upload(file, {
     folder: "Feedback",
-    resource_type: "auto"
+    resource_type: "Auto"
   });
   try {
   const savetoDb = await FeedbackMondel.create({
@@ -15418,7 +16372,7 @@ app.post("/JDescriptions", JDescriptionstorage.single("file"), async (req, res) 
 
   const cloudinaryJDescriptions = await cloudinary.uploader.upload(file, {
     folder: "JDescriptions",
-    resource_type: "auto"
+    resource_type: "Auto"
   });
   try {
   const savetoDb = await JDescriptionsMondel.create({
@@ -15438,6 +16392,57 @@ app.post("/JDescriptions", JDescriptionstorage.single("file"), async (req, res) 
 app.get("/get-JDescriptions", async (req, res) => {
   try {
     JDescriptionsMondel.find({}).sort({createdAt: -1}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+//multer------------------------------------------------------------
+//const multer = require("multer");
+const Matrials = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+require("./model/Matrials");
+const  MatrialsMondel = mongoose.model("Matrials");
+const  Matrialsstorage = multer({ storage:  Matrials });
+
+app.post("/Matrials", Matrialsstorage.single("file"), async (req, res) => {
+  //  console.log("This is my file ",req.file)
+  const file = req.file.path;
+  const {MatrialsTitle,MatrialsDate} = req.body;
+  const {originalname} = req.file;
+
+  const cloudinaryMatrials = await cloudinary.uploader.upload(file, {
+    folder: "Matrials",
+    resource_type: "Auto"
+  });
+  try {
+  const savetoDb = await MatrialsMondel.create({
+    MatrialsTitle,
+    MatrialsDate,
+    filename: originalname,
+    public_id: cloudinaryMatrials.public_id,
+    imgUrl: cloudinaryMatrials.secure_url,
+  });
+ 
+  res.send({ status: "ok" });
+} catch (error) {
+  res.json({ status: error });
+}
+});
+
+app.get("/get-Matrials", async (req, res) => {
+  try {
+    MatrialsMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
@@ -15469,7 +16474,7 @@ app.post("/LabGuidlines", LabGuidlinesstorage.single("file"), async (req, res) =
 
   const cloudinaryLabGuidlines = await cloudinary.uploader.upload(file, {
     folder: "LabGuidlines",
-    resource_type: "auto"
+    resource_type: "Auto"
   });
   try {
   const savetoDb = await LabGuidlinesMondel.create({
@@ -15661,6 +16666,7 @@ app.post("/RiskCommunication", RiskCommstorage.single("file"), async (req, res) 
 
   const cloudinaryRiskComm = await cloudinary.uploader.upload(file, {
     folder: "RiskComm",
+    resource_type: "Auto"
   });
   try{
   const savetoDb = await RiskCommMondel.create({
@@ -15761,16 +16767,16 @@ app.post("/Guidelines", Guidlinesstorage.single("file"), async (req, res) => {
   const {GuidelinesTitle} = req.body;
   const {originalname} = req.file;
 
-  const cloudinaryBulletin = await cloudinary.uploader.upload(file, {
+  const cloudinaryGuidelines = await cloudinary.uploader.upload(file, {
     folder: "Guidlines",
-     resource_type: "auto"
+     resource_type: "Auto"
   });
 try {
   const savetoDb = await GuidlinesMondel.create({
     GuidelinesTitle,
     filename: originalname,
-    public_id: cloudinaryBulletin.public_id,
-    imgUrl: cloudinaryBulletin.secure_url,
+    public_id: cloudinaryGuidelines.public_id,
+    imgUrl: cloudinaryGuidelines.secure_url,
   });
 
   res.send({ status: "ok" });
@@ -15830,7 +16836,7 @@ app.post("/IRBPolicy", IRBPolicystorage.single("file"), async (req, res) => {
 
   const cloudinaryIRBPolicy = await cloudinary.uploader.upload(file, {
     folder: "IRBPolicy",
-     resource_type: "auto"
+     resource_type: "Auto"
   });
 try {
   const savetoDb = await IRBPolicyMondel.create({
@@ -15885,7 +16891,7 @@ app.post("/capacityB", capacityBupload.single("file"), async (req, res) => {
 
   const cloudinarycapacityB = await cloudinary.uploader.upload(file, {
     folder: "capacityB",
-     resource_type: "auto"
+     resource_type: "Auto"
   });
 try {
   const savetoDb = await capacityBMondel.create({
