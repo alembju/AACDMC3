@@ -12,6 +12,8 @@ const HealthFacilityMondel =require('./model/HealthFacilityinfo')
 const session = require('express-session')
 const ImagesMondel = require('./model/imageDetails')
 const Blog = require('./model/Blog')
+const FileEntry = require('./model/FileEntry')
+const Log = require('./model/Log')
 const Form = require('./model/Form')
 const NewsFeedMondel = require('./model/NewsFeedMondel')
 const EVENTSMondel = require('./model/Events')
@@ -19,19 +21,25 @@ const RepDeseaseMondel = require('./model/RepDesease')
 const MongoDBStore = require('connect-mongodb-session')(session);
 const emailRoutes = require("./routes/emailRoutes");
 const dotenv = require("dotenv");
+const helmet = require('helmet');
 require('dotenv').config()
 const fs = require("fs"); 
 //require('dotenv').config()
 const Component = require('./model/Component')
 const CoRegistrationMondel = require('./model/CoRegistration')
 const multer = require('multer')
+const crypto = require('crypto');
+const QRCode = require('qrcode');
 const { createServer } = require('node:http');
 const { Server } = require('socket.io');
+const rateLimit = require('express-rate-limit'); // optional but recommendedcd..
 const port = process.env.PORT || 3000;
  
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const ImageKit = require("imagekit"); 
+const { v4: uuidv4 } = require("uuid");
+const streamifier = require("streamifier");
 
 
 
@@ -99,7 +107,7 @@ app.use("/RiskComm", express.static("RiskComm"));
 app.use("/Guidlines", express.static("Guidlines"));
 app.use("/IRBPolicy", express.static("IRBPolicy"));
 app.use("/capacityB", express.static("capacityB"));
-
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'LabResult');
 
 app.use('/Cards', express.static(path.join(__dirname, 'Cards')));
 
@@ -139,6 +147,7 @@ app.use(bodyParser.json())
 //   }
 // }
 // connect()
+
 
 
 ////////////////////////////------------Authontication ------//////////////////
@@ -247,6 +256,82 @@ const JWT_SECRET =process.env.JWT_SECRET;
       console.log(error);
     }
   });
+
+  ////////////////////////////////////////AACDMC Log History Handling////////////////////
+  // === Log function ===
+async function addLog(action, details) {
+  try {
+    // Save in MongoDB
+    await new Log({ action, details }).save();
+
+    // Save in file system
+    const logLine = `${new Date().toISOString()} | ${action} | ${details}\n`;
+    fs.appendFileSync(path.join(__dirname, "server.log"), logLine);
+  } catch (err) {
+    console.error("Error saving log:", err);
+  }
+}
+
+// === Example Routes ===
+app.post("/api/data", async (req, res) => {
+  const { name } = req.body;
+  if (!name) {
+    await addLog("ERROR", "Name is missing in /api/data request");
+    return res.status(400).json({ error: "Name required" });
+  }
+
+  await addLog("CREATE", `New data created for ${name}`);
+  res.json({ success: true, message: `Data saved for ${name} `});
+});
+
+app.get("/api/logs", async (req, res) => {
+  const logs = await Log.find().sort({ createdAt: -1 }).limit(20);
+  res.json(logs);
+});
+///////////////////////////////////////////////new with log text/////////////
+// ✅ Log file path
+const logFile = path.join(__dirname, "logs.txt");
+
+// ✅ Middleware to save logs (DB + File)
+app.use(async (req, res, next) => {
+  const logEntry = `${new Date().toISOString()} | ${req.headers["x-user"] || "guest"} | ${req.method} ${req.url}\n`;
+
+  // Save to DB
+  try {
+    await Log.create({
+      action: `${req.method} ${req.url}`,
+      user: req.headers["x-user"] || "guest",
+    });
+  } catch (err) {
+    console.error("DB log error:", err.message);
+  }
+
+  // Save to File
+  fs.appendFile(logFile, logEntry, (err) => {
+    if (err) console.error("File log error:", err.message);
+  });
+
+  next();
+});
+
+// ✅ Example route
+app.post("/api/doSomething", (req, res) => {
+  res.json({ message: "Action performed successfully!" });
+});
+
+// ✅ Get logs from DB
+app.get("/api/logs", async (req, res) => {
+  const logs = await Log.find().sort({ createdAt: -1 });
+  res.json(logs);
+});
+
+// ✅ Get logs from File
+app.get("/api/logs/file", (req, res) => {
+  fs.readFile(logFile, "utf8", (err, data) => {
+    if (err) return res.status(500).json({ error: "Could not read logs.txt" });
+    res.type("text/plain").send(data);
+  });
+});
 
   /////////////////////////////////////////////////formula for date for reserch recieved///
   // Function to add working days (skipping Saturday & Sunday)
@@ -1552,6 +1637,7 @@ app.get("/get-Director", async (req, res) => {
     res.json({ status: error });
   }
 });
+
 ////////////////////////Delet Banner/////////////////////////////
  app.delete('/deletDirector/:id',(req, res) =>{
   const id = req.params.id;
@@ -1584,6 +1670,7 @@ app.post("/Operation", OperationImag.single("file"), async (req, res) => {
 
   const cloudinaryOperation = await cloudinary.uploader.upload(file, {
     folder: "Operation",
+    resource_type: "auto"
   });
 
   const savetoDb = await OperationMondel.create({
@@ -1608,7 +1695,7 @@ app.get("/get-Operation", async (req, res) => {
     res.json({ status: error });
   }
 });
-////////////////////////Delet Banner/////////////////////////////
+////////////////////////Delet Operation/////////////////////////////
  app.delete('/deletOperation/:id',(req, res) =>{
   const id = req.params.id;
   OperationMondel.findByIdAndDelete({_id: id})
@@ -1632,20 +1719,20 @@ const Planning = multer.diskStorage({
  const PlanningMondel = mongoose.model("Planning");
 const PlanningImag = multer({ storage: Planning });
 
-app.post("/TopLeders", PlanningImag.single("file"), async (req, res) => {
+app.post("/Planning", PlanningImag.single("file"), async (req, res) => {
   //  console.log("This is my file ",req.file)
   const file = req.file.path;
-  const { TPosition, TEducation } = req.body;
+  const { PPosition, PEducation } = req.body;
   const {originalname} = req.file;
 
   const cloudinaryPlanning = await cloudinary.uploader.upload(file, {
-    folder: "TopLeders",
+    folder: "Planning",
     resource_type: "auto"
   });
 
   const savetoDb = await PlanningMondel.create({
-    TPosition,
-    TEducation,
+    PPosition,
+    PEducation,
     filename:originalname,
     public_id: cloudinaryPlanning.public_id,
     imgUrl: cloudinaryPlanning.secure_url,
@@ -1685,16 +1772,17 @@ const TopLedersImag = multer({ storage: TopLeders });
 app.post("/TopLeders", TopLedersImag.single("file"), async (req, res) => {
   //  console.log("This is my file ",req.file)
   const file = req.file.path;
-  const { PPosition, PEducation } = req.body;
+  const { TPosition, TEducation } = req.body;
   const {originalname} = req.file;
 
   const cloudinaryTopLeders = await cloudinary.uploader.upload(file, {
     folder: "TopLeders",
+    resource_type: "auto"
   });
 
   const savetoDb = await TopLedersMondel.create({
-    PPosition,
-    PEducation,
+    TPosition,
+    TEducation,
     filename:originalname,
     public_id: cloudinaryTopLeders.public_id,
     imgUrl: cloudinaryTopLeders.secure_url,
@@ -12624,7 +12712,9 @@ const ResearchM = multer.diskStorage({
 require("./model/Research");
 
 const ResearchMondel = mongoose.model("Researchs" )
-const ResearchStor = multer({ storage: ResearchM });
+const ResearchStor = multer({ storage: ResearchM ,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
+  });
 
 app.post("/ResearchP", upload.array("files", 10), async (req, res) => {
   try {
@@ -12710,26 +12800,6 @@ app.get("/files", async (req, res) => {
   }
 });
 
- ////////////////////////////fetchinf Number of colledg for Reserch dashbored////////////
-        app.get("/getAllColledge", async (req, res) => {
-          let query = {};
-          const searchData = req.query.search;
-          if (searchData) {
-            query = {
-              $or: [
-                { NCollege: { $regex: searchData, $options: "i" } },
-                { Study: { $regex: searchData, $options: "i" } },
-              ],
-            };
-          }
-        
-          try {
-            const allUser = await ResearchMondel.find(query);
-            res.send({ status: "ok", data: allUser });
-          } catch (error) {
-            console.log(error);
-          }
-        });
 // //multer------------------------------------------------------------
 // //const multer = require("multer");
 
@@ -12848,6 +12918,179 @@ app.get("/Gete-Other", async (req, res) => {
     });
   } catch (error) {}
 });
+app.get("/Gete-Qualitative", async (req, res) => {
+  try {
+    const Qualitative= ResearchMondel.find().or([{Rmethods:"Qualitative"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Qualitative)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Quantitative", async (req, res) => {
+  try {
+    const Quantitative= ResearchMondel.find().or([{Rmethods:"Quantitative"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Quantitative)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Mixed", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{Rmethods:"Mixed"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-National", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"National"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+
+app.get("/Gete-Region", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Region | City"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-SubCity", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Zone | Sub City"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Woreda", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Woreda"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Kebele", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Kebele"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Program", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Program/research implementation woreda or kebele"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Departmental", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Departmental"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Facility", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Facility"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Global", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Global"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-NotRepresentative", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Not representative"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Others", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Others"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Electronic", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{Eelectronically:"yes"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-NoElectronic", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{Eelectronically:"No"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Access", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{Dsharing:"Open access"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Request", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{Dsharing:"Accessible upon request"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+app.get("/Gete-Notaccessible", async (req, res) => {
+  try {
+    const Mixed= ResearchMondel.find().or([{Dsharing:"Not accessible"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(Mixed)
+    });
+  } catch (error) {}
+});
+ ////////////////////////////fetchinf Student proposal for reserch dashbored////////////
+        app.get("/ProposalSubmit", async (req, res) => {
+          let query = {};
+          const searchData = req.query.search;
+          if (searchData) {
+            query = {
+              $or: [
+                { Rmethods: { $regex: searchData, $options: "i" } },
+                { Design: { $regex: searchData, $options: "i" } },
+              ],
+            };
+          }
+        
+          try {
+            const allUser = await ResearchMondel.find(query);
+            res.send({ status: "ok", data: allUser });
+          } catch (error) {
+            console.log(error);
+          }
+        });
 //multer------------------------------------------------------------
 //const multer = require("multer");
 
@@ -13845,6 +14088,26 @@ const Colledge = multer.diskStorage({
     .catch(err => console.log(err))  
     })
 
+    ////////////////////////////fetchinf Number of colledge for reserch dashbored////////////
+        app.get("/TotalColledge", async (req, res) => {
+          let query = {};
+          const searchData = req.query.search;
+          if (searchData) {
+            query = {
+              $or: [
+                { CollName: { $regex: searchData, $options: "i" } },
+                { CollName: { $regex: searchData, $options: "i" } },
+              ],
+            };
+          }
+        
+          try {
+            const allUser = await ColledgeMondel.find(query);
+            res.send({ status: "ok", data: allUser });
+          } catch (error) {
+            console.log(error);
+          }
+        });
 //////bulletin uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");"./FinalReserchPaper"
@@ -13998,18 +14261,18 @@ app.get("/pdfs", async (req, res) => {
 // });
 
 // ➤ Download PDF (signed URL)
-app.get("/api/download/:fileId", async (req, res) => {
-  const doc = await FileModel.findOne({ fileId: req.params.fileId });
-  if (!doc) return res.status(404).json({ error: "Not found" });
+// app.get("/api/download/:fileId", async (req, res) => {
+//   const doc = await FileModel.findOne({ fileId: req.params.fileId });
+//   if (!doc) return res.status(404).json({ error: "Not found" });
 
-  const path = `${process.env.IMAGEKIT_FOLDER}/${doc.fileName}`;
-  const signedUrl = imagekit.getSignedUrl({
-    path,
-    expireSeconds: parseInt(process.env.SIGNED_URL_EXPIRY_SECONDS || "300", 10),
-  });
+//   const path = `${process.env.IMAGEKIT_FOLDER}/${doc.fileName}`;
+//   const signedUrl = imagekit.getSignedUrl({
+//     path,
+//     expireSeconds: parseInt(process.env.SIGNED_URL_EXPIRY_SECONDS || "300", 10),
+//   });
 
-  res.json({ signedUrl });
-});
+//   res.json({ signedUrl });
+// });
 
 
 // const Bulletin = multer.diskStorage({
@@ -14071,7 +14334,135 @@ app.get("/get-Bulliten", async (req, res) => {
 //       } res.setHeader("Content-Disposition", "attachment; filename=file.pdf"); 
 //       res.redirect(url); 
 //     }); 
-   
+   /////////////////////////////////////////////////////////////////generate cod and dowenload////////
+   // --- Helper: Generate short random code ---
+function generateCode(len = 6) {
+  return crypto.randomBytes(Math.ceil(len / 2)).toString('hex').slice(0, len);
+}
+
+// --- API Routes ---
+
+// 1️⃣ Create new record and generate code
+app.post('/api/create', async (req, res) => {
+  try {
+    const { name, phone, Professional, sex ,HFName, HFTName} = req.body;
+    if (!name) return res.status(400).json({ error: 'Name required' });
+
+    let code;
+    for (let i = 0; i < 5; i++) {
+      code = generateCode(8);
+      const exists = await FileEntry.findOne({ code });
+      if (!exists) break;
+      code = null;
+    }
+    if (!code) return res.status(500).json({ error: 'Could not generate code' });
+
+    const entry = new FileEntry({ code, name, phone, Professional, sex ,HFName, HFTName});
+    await entry.save();
+
+    res.json({ message: 'Code created', code });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+////////////// fetching Lab result /////////////
+
+app.get('/LabResult_info',(req, res) =>{
+    
+  FileEntry.find()
+  .then(users => res.json(users))
+  .catch(err => console.log(err))  
+  })
+//////////////////////////////////////////Update Health Facility Name laboratory result////////////////////////////////////////HFUpdate
+app.get('/LabResult_Update/:id', (req, res) => {
+  const id = req.params.id
+  FileEntry.findById({_id: id})
+  .then(post => res.json(post))
+  .catch(err => console.log(err))
+})
+
+app.put('/LabResult_Update/:id', (req, res) => {
+  const id = req.params.id;
+  FileEntry.findByIdAndUpdate({_id: id}, {
+    HFName: req.body.HFName,
+  }).then(user => res.json(user))
+  .catch(err => res.json(err))
+})
+// ====== MULTER (MEMORY STORAGE) ======
+const uploadLabResult = multer({ storage: multer.memoryStorage() });
+
+// 2️⃣ Upload file to Cloudinary for a specific code
+app.post('/api/upload/:code', uploadLabResult.single('file'), async (req, res) => {
+  try {
+    const { code } = req.params;
+    const entry = await FileEntry.findOne({ code });
+    if (!entry) return res.status(404).json({ error: 'Invalid code' });
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'No file uploaded or empty file buffer' });
+    }
+
+    console.log('Buffer size:', req.file.buffer.length, 'bytes');
+
+    // Promisify Cloudinary upload_stream
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder: 'LabResult', resource_type: 'auto' },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+
+      streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+    });
+
+    // Generate QR code for download link
+    const downloadLink = `${process.env.CLIENT_BASE_URL}/download?code=${code}`;
+    const qrDataUrl = await QRCode.toDataURL(downloadLink);
+
+    // Update entry
+    entry.cloudinaryUrl = result.secure_url;
+    entry.qrCode = qrDataUrl;
+    await entry.save();
+
+    res.json({
+      message: 'File uploaded to Cloudinary successfully!',
+      code,
+      cloudinaryUrl: result.secure_url,
+      qrCode: qrDataUrl,
+    });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: err.message || 'Upload failed' });
+  }
+});
+
+// 3️⃣ Download (redirect to Cloudinary file)
+app.get('/api/download/:code', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const entry = await FileEntry.findOne({ code });
+    if (!entry || !entry.cloudinaryUrl)
+      return res.status(404).json({ error: 'File not found' });
+
+    // Redirect user to Cloudinary URL
+    res.redirect(entry.cloudinaryUrl);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// 4️⃣ Get entry info
+app.get('/api/entry/:code', async (req, res) => {
+  const entry = await FileEntry.findOne({ code: req.params.code });
+  if (!entry) return res.status(404).json({ error: 'Not found' });
+  res.json(entry);
+});
+
+
+///////////////////////////////////////////////end of code generate and dowenload file///////////
     
 
 app.get('/fetching-Bulliten', async(req, res) =>{
@@ -14235,7 +14626,7 @@ app.post("/LinelistT", LinelistStorage.single("LineListfile"), async (req, res) 
   const {originalname} = req.file;
 
   const cloudinaryLinelist = await cloudinary.uploader.upload(file, {
-    folder: "Linelist",
+    folder: "LinelistT",
    resource_type: 'auto',
     // format: 'pdf',
     // allowed_formats: ['pdf']
@@ -14315,6 +14706,311 @@ app.get("/get-WeeklyR", async (req, res) => {
     });
   } catch (error) {}
 });
+
+/////bulletin WeeklyReport/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");"./FinalReserchPaper"
+// const DowenloadCODE = multer.diskStorage({
+//   // destination: './public/uploads',
+//   filename: function (req, file, cb) {
+//     cb(
+//       null,
+//       file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+//     );
+//   },
+// });
+
+
+// require("./model/File");
+// const FileMondel = mongoose.model("File");
+// const FileStorage = multer({ storage: DowenloadCODE ,
+//   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit; change as needed
+// });
+
+// // ---------- Rate limiter for download endpoint ----------
+// const dlLimiter = rateLimit({
+//   windowMs: 60 * 1000, // 1 minute
+//   max: 10,
+//   message: 'Too many downloads from this IP, please try again later.'
+// });
+
+// // ---------- Helpers ----------
+// function genCode(len = 8) {
+//   // friendly alphanumeric code
+//   return crypto.randomBytes(Math.ceil(len/2)).toString('hex').slice(0, len);
+// }
+
+
+// // 1) Upload (returns the unique code)
+// app.post('/uploadResult', FileStorage.single('file'), async (req, res) => {
+//   try {
+//     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+//     // generate unique code; ensure uniqueness in DB
+//     let code;
+//     let tries = 0;
+//     do {
+//       if (tries++ > 5) return res.status(500).json({ error: 'Could not generate unique code' });
+//       code = genCode(8); // 8 hex chars
+//     } while (await FileMondel.findOne({ code }));
+
+//     //
+//     const file = req.file.path;
+//      const cloudinaryLabREsult = await cloudinary.uploader.upload(file, {
+//     folder: "LabResult",
+//      resource_type: "auto"
+//   });
+
+//     const fileDoc = new FileMondel({
+//       code,
+//       filenameOnDisk: req.file.filename,
+//       originalName: req.file.originalname,
+//       mimeType: req.file.mimetype,
+//       // optional: set expiry 7 days from now
+//       // expiresAt: new Date(Date.now() + 7*24*3600*1000)
+
+//     });
+//     await fileDoc.save();
+
+//     // return the code (client will use it to download)
+//     res.send({ code, originalName: req.file.originalname });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: 'Upload failed' });
+//   }
+// });
+
+// // 2) Download by code (no controller, single file)
+// // Example: GET /download/abcd1234
+// app.get('/downloadLabResult/:code', dlLimiter, async (req, res) => {
+//   try {
+//     const code = req.params.code;
+//     // Basic validation: only allow 1-64 chars alnum/hex
+//     if (!/^[0-9a-fA-F]{4,64}$/.test(code)) return res.status(400).json({ error: 'Invalid code format' });
+
+//     const fileDoc = await FileMondel.findOne({code});
+//     if (!fileDoc) return res.status(404).json({ error: 'File not found' });
+
+//     // Optional: check expiry
+//     if (fileDoc.expiresAt && fileDoc.expiresAt < new Date()) {
+//       return res.status(410).json({ error: 'File expired' });
+//     }
+
+//         const filePath = path.join(UPLOAD_DIR, fileDoc.filenameOnDisk);
+//     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File missing on server' });
+
+//     // increment download counter (fire-and-forget)
+//     FileMondel.updateOne({ _id: fileDoc._id }, { $inc: { downloads: 1 } }).catch(()=>{});
+
+//     // Set headers so browser downloads file with original name
+//     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileDoc.originalName)}"`);
+//     res.setHeader('Content-Type', fileDoc.mimeType || 'application/octet-stream');
+
+//     // Stream the file
+//     const stream = fs.createReadStream(filePath);
+//     stream.on('error', (err) => {
+//       console.error('stream error', err);
+//       if (!res.headersSent) res.status(500).end('Server error');
+//     });
+//     stream.pipe(res);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: 'Download failed' });
+//   }
+// });
+
+// // 3) Optional: admin route to list files (protect in prod)
+// app.get('/admin/list', async (req, res) => {
+//   const files = await FileMondel.find().sort({ createdAt: -1 }).limit(100).lean();
+//   res.json(files);
+// });
+
+// // 4) Optional: delete by code (admin)
+// app.delete('/admin/delete/:code', async (req, res) => {
+//   const code = req.params.code;
+//   const fileDoc = await FileMondel.findOneAndDelete({ code });
+//   if (!fileDoc) return res.status(404).json({ error: 'Not found' });
+//   const filePath = path.join(UPLOAD_DIR, fileDoc.filenameOnDisk);
+//   fs.unlink(filePath, () => {});
+//   res.json({ ok: true });
+// });
+
+
+
+// --- DOWNLOAD BY CODE ---
+app.get('/download/:code', async (req, res) => {
+try {
+const code = req.params.code;
+const fileDoc = await File.findOne({ code });
+if (!fileDoc) return res.status(404).json({ error: 'code not found' });
+
+
+if (fileDoc.expiresAt && fileDoc.expiresAt < new Date()) {
+return res.status(410).json({ error: 'file expired' });
+}
+
+
+fileDoc.downloads = (fileDoc.downloads || 0) + 1;
+await fileDoc.save();
+
+
+// Cloudinary secure URL redirect
+return res.redirect(fileDoc.cloudinaryUrl);
+
+
+} catch (err) {
+console.error(err);
+res.status(500).json({ error: 'download failed' });
+}
+});
+
+
+////bulletin WeeklyReport/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");"./FinalReserchPaper"
+// const record = multer.diskStorage({
+//   // destination: './public/uploads',
+//   filename: function (req, file, cb) {
+//     cb(
+//       null,
+//       file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+//     );
+//   },
+// });
+//const record = multer({ storage: multer.memoryStorage() })
+// Multer setup for in-memory storage
+// const record = multer({ storage: multer.memoryStorage() });
+
+// require("./model/Record");
+// const RecordModel = mongoose.model("Record");
+// const RecordStorage = multer({ storage: record });
+
+// app.post("/api/submit", async (req, res) => {
+//   try {
+//     const { name, age, sex } = req.body;
+//     if (!name) return res.status(400).json({ error: "Name required" });
+
+//     // create unique short code
+//     const code = uuidv4().replace(/-/g, "").slice(0, 8);
+
+//     const record = new RecordModel({ name, age, sex, code });
+//     await record.save();
+
+//     res.json({ code });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// });
+
+// // 2) Upload file by code
+// app.post("/api/upload/:code", upload.single("recordfile"), async (req, res) => {
+//   try {
+//     const { code } = req.params;
+//     const record = await RecordModel.findOne({ code });
+//     if (!record) return res.status(404).json({ error: "Invalid code" });
+
+//     if (!req.file || !req.file.buffer) {
+//       return res.status(400).json({ error: "No valid file uploaded" });
+//     }
+
+//     console.log("File received:", req.file);
+
+//     const uploadStream = cloudinary.uploader.upload_stream(
+//       { folder: "mern_uploads", resource_type: "auto" },
+//       async (error, result) => {
+//         if (error) {
+//           console.error("Cloudinary upload error:", error);
+//           return res.status(500).json({ error: "Upload failed" });
+//         }
+
+//         // save Cloudinary info to DB
+//         record.file_public_id = result.public_id;
+//         record.file_url = result.secure_url;
+//         record.uploadedAt = new Date();
+//         await record.save();
+
+//         res.json({ message: "File uploaded", file_url: result.secure_url });
+//       }
+//     );
+
+//     streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+//   } catch (err) {
+//     console.error("Server error:", err);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// });
+
+// // 3) Download/Access file by code -> redirect to Cloudinary secure URL
+// app.get("/api/download/:code", async (req, res) => {
+//   try {
+//     const { code } = req.params;
+//     const record = await RecordModel.findOne({ code });
+//     if (!record || !record.file_url) return res.status(404).json({ error: "File not found" });
+
+//     // Redirect client to Cloudinary URL for direct download/preview
+//     return res.redirect(record.file_url);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// });
+
+// // 3) Download/Access file by code
+// app.get("/api/download/:code", async (req, res) => {
+//   try {
+//     const { code } = req.params;
+//     const record = await RecordModel.findOne({ code });
+//     if (!record || !record.file_url)
+//       return res.status(404).json({ error: "File not found" });
+
+//     return res.redirect(record.file_url);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Server error" });
+//   }
+// });
+// app.post("/Record", RecordStorage.single("Weeklyfile"), async (req, res) => {
+//   //  console.log("This is my file ",req.file)
+//   const file = req.file.path;
+//   const {WeeklyReportTitle,WeeklyReportDate} = req.body;
+//   const {originalname} = req.file;
+
+//   const cloudinaryWeeklyReport = await cloudinary.uploader.upload(file, {
+//     folder: "WeeklyReport",
+//    resource_type: 'auto',
+//     // format: 'pdf',
+//     // allowed_formats: ['pdf']
+//   });
+//   try {
+//   const savetoDb = await WeeklyReportMondel.create({
+//     WeeklyReportTitle,
+//     WeeklyReportDate,
+//     filename: originalname,
+//     public_id: cloudinaryWeeklyReport.public_id,
+//     imgUrl: cloudinaryWeeklyReport.secure_url,
+//   });
+
+//   res.send({ status: "ok" });
+//   } catch (error) {
+//     res.json({ status: error });
+//   }
+// });
+
+// check metadata
+// app.get('/check/:code', async (req, res) => {
+// const code = req.params.code;
+// const fileDoc = await File.findOne({ code });
+// if (!fileDoc) return res.status(404).json({ ok: false, message: 'not found' });
+// res.json({ ok: true, name: fileDoc.originalName, size: fileDoc.size });
+// });
+// app.get("/get-WeeklyR", async (req, res) => {
+//   try {
+//     WeeklyReportMondel.find({}).sort({createdAt: -1}).then((data) => {
+//       res.send({ status: "ok", data: data });
+//     });
+//   } catch (error) {}
+// });
 //////Outbreak Investigation uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
@@ -15143,7 +15839,7 @@ app.post('/posts/:id/comments', async (req, res) => {
 // Create blog post
 app.post('/api/blogs', async (req, res) => {
   const { title, content } = req.body;
-  const blog = new Blog({ title, content, comments: [] });
+  const blog = new Blog({title, content, comments: []});
   await blog.save();
   res.json(blog);
 });
@@ -16399,9 +17095,10 @@ app.get("/get-JDescriptions", async (req, res) => {
   }
 });
 
-//multer------------------------------------------------------------
+//////Homepage Materials/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
 //const multer = require("multer");
-const Matrials = multer.diskStorage({
+const  Material = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
     cb(
@@ -16411,44 +17108,60 @@ const Matrials = multer.diskStorage({
   },
 });
 
-require("./model/Matrials");
-const  MatrialsMondel = mongoose.model("Matrials");
-const  Matrialsstorage = multer({ storage:  Matrials });
+require("./model/Material");
+const   MaterialMondel = mongoose.model("Material");
+const   Materialstorage = multer({ storage:   Material });
 
-app.post("/Matrials", Matrialsstorage.single("file"), async (req, res) => {
-  //  console.log("This is my file ",req.file)
-  const file = req.file.path;
-  const {MatrialsTitle,MatrialsDate} = req.body;
-  const {originalname} = req.file;
+app.post("/Material", (req, res, next) => {
+  Materialstorage.single("file")(req, res, function (err) {
+    if (err instanceof multer.MulterError) {
+      return res.status(500).json({ status: "error", message: err.message });
+    } else if (err) {
+      return res.status(500).json({ status: "error", message: "Unknown error" });
+    }
 
-  const cloudinaryMatrials = await cloudinary.uploader.upload(file, {
-    folder: "Matrials",
-    resource_type: "Auto"
+    next();
   });
+}, async (req, res) => {
   try {
-  const savetoDb = await MatrialsMondel.create({
-    MatrialsTitle,
-    MatrialsDate,
-    filename: originalname,
-    public_id: cloudinaryMatrials.public_id,
-    imgUrl: cloudinaryMatrials.secure_url,
+  const file = req.file?.path;
+
+  if (!file) {
+    return res.status(400).json({ error: "No file uploaded or path missing." });
+  }
+
+  const cloudinaryLabGuidlines = await cloudinary.uploader.upload(file, {
+    folder: "Material",
+    resource_type: "auto", // lowercase recommended
   });
- 
-  res.send({ status: "ok" });
+
+  const savetoDb = await MaterialMondel.create({
+    MatrialsTitle: req.body.MatrialsTitle,
+    MatrialsDate: req.body.MatrialsDate,
+    filename: req.file.originalname,
+    public_id: cloudinaryLabGuidlines.public_id,
+    imgUrl: cloudinaryLabGuidlines.secure_url,
+  });
+
+  return res.send({ status: "ok" });
 } catch (error) {
-  res.json({ status: error });
+  console.error("Upload Error:", error);
+  return res.status(500).json({ status: "error", message: error.message });
 }
 });
 
-app.get("/get-Matrials", async (req, res) => {
+app.get("/get-Material", async (req, res) => {
   try {
-    MatrialsMondel.find({}).sort({createdAt: -1}).then((data) => {
+    MaterialMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {
     res.json({ status: error });
   }
 });
+
+
+
 //////Homepage LabGuidlines/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
@@ -16559,7 +17272,7 @@ const CardBottumstorage = multer({ storage: CardBottum });
 app.post("/CreatCardBottum", CardBottumstorage.single("file"), async (req, res) => {
   //  console.log("This is my file ",req.file)
   const file = req.file.path;
-  const { Bottumname, Bottumdescription,BottumDetail } = req.body;
+  const { Bottumname,BotumDate, Bottumdescription,BottumDetail } = req.body;
 
   const cloudinaryCardBottum = await cloudinary.uploader.upload(file, {
     folder: "CardBottum",
@@ -16568,6 +17281,7 @@ app.post("/CreatCardBottum", CardBottumstorage.single("file"), async (req, res) 
   try{
   const savetoDb = await CardBottumMondel.create({
     Bottumname,
+    BotumDate,
     Bottumdescription,
     BottumDetail,
     filename: file.originalname,
@@ -16629,7 +17343,7 @@ app.get("/get-CardBottum", async (req, res) => {
       
 ///////////////fetchin CardBottum////////////
 app.get('/CardBottum',(req, res) =>{
-  CardBottumMondel.find()
+  CardBottumMondel.find({})
   .then(users => res.json(users))
   .catch(err => console.log(err))  
   })
@@ -17011,6 +17725,11 @@ app.get('/EVENTSGet',(req, res) =>{
 }).catch(err => res.json(err))
 
 })*/
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Internal server error", details: err.message });
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/src', 'index.html'));
 });

@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const CardsScehma = new mongoose.Schema({
   FrontTitle: String,
-  FrontDate:  String,
+  FrontDate:  Date,
   Frontdescription: String,
   FrontDetail: String,
   filename:String,

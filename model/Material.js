@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
+const MaterialScehma = new mongoose.Schema({
 
-const MatrialsScehma = new mongoose.Schema({
   MatrialsTitle: String,
   MatrialsDate: Date,
   filename:String,
@@ -12,4 +12,5 @@ const MatrialsScehma = new mongoose.Schema({
   timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
 }
 );
-module.exports = mongoose.model('Matrials', MatrialsScehma);
+
+module.exports = mongoose.model('Material', MaterialScehma);

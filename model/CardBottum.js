@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const CardBottumScehma = new mongoose.Schema({
   Bottumname: String,
+  BotumDate: Date,
   Bottumdescription: String,
   BottumDetail: String,
   filename:String,
