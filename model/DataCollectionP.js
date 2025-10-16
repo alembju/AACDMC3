@@ -1,7 +1,7 @@
 const mongoose = require('mongoose')
 
 const DataCollectionPSchema= new mongoose.Schema({
-    orgname:String,
+   
     Name:String,
     PhonePI:String,
     email:String,
@@ -18,6 +18,9 @@ const DataCollectionPSchema= new mongoose.Schema({
     DStart:Date,
     DTermination:Date,
     
+},
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
 },
 { collection: "DataCollectionP" }
 );

@@ -2467,58 +2467,59 @@ app.get("/get-OutbreakI", async (req, res) => {
 //multer------------------------------------------------------------
 //const multer = require("multer");
 ////////////////////////////////////DataCollectionP///////////
+// Multer storage config
 const DataCollectionP = multer.diskStorage({
-  // destination: './public/uploads',
+  destination: function (req, file, cb) {
+    cb(null, "./DataCollectionP");
+  },
   filename: function (req, file, cb) {
-    cb(
-      null,
-      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
-    );
+    const uniqueSuffix = Date.now();
+    cb(null,uniqueSuffix +  file.originalname);
   },
 });
 
+require("./model/DataCollectionP");
 
- require("./model/DataCollectionP");
-
-const DataCollectionPMondel  = mongoose.model("DataCollectionP" )
+const DataCollectionPMondel = mongoose.model("DataCollectionP" )
 const DataCollectionPupload = multer({ storage: DataCollectionP });
 
 app.post("/DataCollectionP", DataCollectionPupload.single("file"), async (req, res) => {
-  //  console.log("This is my file ",req.file)
-  const file = req.file.path;
-  const { Name,PhonePI,email,title,NUniversity,DataC,StudyA1,NameContactP1,CPhone1,AdditionalDC,StudyA2,NameContactP2,CPhone2,DStart,DTermination } = req.body;
-  const {originalname} = req.file;
+  console.log(req.file);
+  const Name = req.body.Name;
+  const PhonePI = req.body.PhonePI;
+  const email = req.body.email;
+  const title = req.body.title;
+  const NUniversity = req.body.NUniversity;
+  const DataC = req.body.DataC;
+  const StudyA1 = req.body.StudyA1;
+  const NameContactP1 = req.body.NameContactP1;
+  const CPhone1 = req.body.CPhone1;
+  const AdditionalDC = req.body.AdditionalDC;
+  const StudyA2 = req.body.StudyA2;
+  const NameContactP2 = req.body.NameContactP2;
+  const CPhone2 = req.body.CPhone2;
+  const DStart = req.body.DStart;
+  const DTermination = req.body.DTermination;
+  
 
-  const cloudinaryDataCollectionP = await cloudinary.uploader.upload(file, {
-    folder: "DataCollectionP",
-  });
-
-  const savetoDb = await DataCollectionPMondel.create({
-    Name,
-    PhonePI,
-    email,
-    title,
-    NUniversity,
-    DataC,
-    StudyA1,
-    NameContactP1,
-    CPhone1,
-    AdditionalDC,
-    StudyA2,
-    NameContactP2,
-    CPhone2,
-    DStart,
-    DTermination,
-    filename:originalname,
-    public_id: cloudinaryDataCollectionP.public_id,
-    imgUrl: cloudinaryDataCollectionP.secure_url,
-  });
- try {
-  res.send({ status: "ok" });
+  try {
+    await DataCollectionPMondel.create({Name:Name,PhonePI:PhonePI,email:email,title:title,NUniversity:NUniversity,DataC:DataC,StudyA1:StudyA1,NameContactP1:NameContactP1,CPhone1:CPhone1,AdditionalDC:AdditionalDC,StudyA2:StudyA2,NameContactP2:NameContactP2,CPhone2:CPhone2,DStart:DStart,DTermination:DTermination});
+    res.send({ status: "ok" });
   } catch (error) {
     res.json({ status: error });
   }
 });
+
+app.get("/get-CoRegistration", async (req, res) => {
+  try {
+    DataCollectionPMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+
+
+
 // POST route to save multiple forms
 app.post("/api/forms", async (req, res) => {
   try {
@@ -13945,23 +13946,180 @@ app.post("/ResearchP" ,ResearchStor.single('Proposal'), (req, res) => {
 }).catch(err => res.json(err))
 
 })*/
-
 //////CoRegistration/////////////////////////////////////////////////////////
-app.post("/CoRegistration" ,(req, res) => {
-    const{NCollege,informationF,Name,Educational,Specialization,email,phone,Advisory} = req.body
-    CoRegistrationMondel.findOne({email: email})
-    .then(user => {
-        if(user){
-        res.json("Already have an account")}
-        else{
-            CoRegistrationMondel.create({NCollege:NCollege,informationF:informationF,Name:Name,Educational:Educational,Specialization:Specialization,email:email,phone:phone,Advisory:Advisory})
-            .then(result => res.json("Account created"))
-            .catch(err => res.json("error"))
-        }
-    
-}).catch(err => res.json(err))
+// Multer storage config
+const CoRegistrationStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "./CoRegistration");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now();
+    cb(null,uniqueSuffix +  file.originalname);
+  },
+});
 
-})
+require("./model/CoRegistration");
+
+const CoRegistrationModel = mongoose.model("CoRegistration" )
+const CoRegistrationUpload = multer({ storage: CoRegistrationStorage });
+
+app.post("/CoRegistration", CoRegistrationUpload.single("file"), async (req, res) => {
+  console.log(req.file);
+  const NCollege = req.body.NCollege;
+  const informationF = req.body.informationF;
+  const Name = req.body.Name;
+  const Educational = req.body.Educational;
+  const Specialization = req.body.Specialization;
+  const email = req.body.email;
+  const phone = req.body.phone;
+  const Advisory = req.body.Advisory;
+  const Departments = req.body.Departments;
+  const TDepartments = req.body.TDepartments;
+  const IRBPhone = req.body.IRBPhone;
+  const IRBEmail = req.body.IRBEmail;
+  const EstablishedDate = req.body.EstablishedDate;
+  const RenewedDate = req.body.RenewedDate;
+  const Number = req.body.Number;
+  const Renewal = req.body.Renewal;
+  const Dual = req.body.Dual;
+
+  try {
+    await CoRegistrationModel.create({NCollege:NCollege,informationF:informationF,Name:Name,Educational:Educational,Specialization:Specialization,email:email,phone:phone,Advisory:Advisory,Departments:Departments,TDepartments:TDepartments,IRBPhone:IRBPhone,IRBEmail:IRBEmail,EstablishedDate:EstablishedDate,RenewedDate:RenewedDate,Number:Number,Renewal:Renewal,Dual:Dual});
+    res.send({ status: "ok" });
+  } catch (error) {
+    res.json({ status: error });
+  }
+});
+
+app.get("/get-CoRegistration", async (req, res) => {
+  try {
+    CoRegistrationModel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
+
+// const CoRegistrationStorage = multer.diskStorage({
+//   // destination: './public/uploads',
+//   filename: function (req, file, cb) {
+//     cb(
+//       null,
+//       file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+//     );
+//   },
+// });
+
+// const CoRegistrationUpload = multer({ storage: CoRegistrationStorage });
+
+// // Load Mongoose model
+// require("./model/CoRegistration");
+// const CoRegistrationModel = mongoose.model("CoRegistration");
+
+// // Express POST route
+// app.post("/CoRegistration", CoRegistrationUpload.single("file"), async (req, res) => {
+//   try {
+//     const file = req.file?.path;
+//     const { originalname } = req.file || {};
+
+//     if (!file) {
+//       return res.status(400).json({ status: "error", message: "No file uploaded." });
+//     }
+
+//     const {
+//       NCollege,
+//       informationF,
+//       Name,
+//       Educational,
+//       Specialization,
+//       email,
+//       phone,
+//       Advisory,
+//       Departments,
+//       TDepartments,
+//       IRBPhone,
+//       IRBEmail,
+//       EstablishedDate,
+//       RenewedDate,
+//       Number,
+//       Renewal,
+//       Dual
+//     } = req.body;
+
+//     // Validate inputs
+//     if (!email || !Name || !phone || !NCollege) {
+//       return res.status(400).json({ status: "error", message: "Missing required fields" });
+//     }
+
+//         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//     if (!emailRegex.test(email)) {
+//       return res.status(400).json({ status: "error", message: "Invalid email format" });
+//     }
+
+//     // Check for existing registration by email
+//     const existing = await CoRegistrationModel.findOne({ email });
+//     if (existing) {
+//       return res.json({ status: "error", message: "Already have an account" });
+//     }
+
+  
+
+//     // Save new registration to MongoDB
+//     await CoRegistrationModel.create({
+//       NCollege,
+//       informationF,
+//       Name,
+//       Educational,
+//       Specialization,
+//       email,
+//       phone,
+//       Advisory,
+//       Departments,
+//       TDepartments,
+//       IRBPhone,
+//       IRBEmail,
+//       EstablishedDate,
+//       RenewedDate,
+//       Number,
+//       Renewal,
+//       Dual,
+//       filename: originalname,
+//       public_id: cloudinaryUpload.public_id,
+//       imgUrl: cloudinaryUpload.secure_url,
+//     });
+
+//      res.send({ status: "ok" });
+//   } catch (error) {
+//    console.error("Error in /CoRegistration:", error);
+//     res.status(500).json({ status: "error", message: error.message });
+//   }
+// });
+
+
+
+//     res.json({ status: "ok", message: "Successfully registered" });
+
+//   } catch (error) {
+//     console.error("Error in /CoRegistration:", error);
+//     res.status(500).json({ status: "error", message: error.message });
+//   }
+// });
+
+// //////CoRegistration/////////////////////////////////////////////////////////
+// app.post("/CoRegistration" ,(req, res) => {
+//     const{NCollege,informationF,Name,Educational,Specialization,email,phone,Advisory,Departments,TDepartments,IRBPhone,IRBEmail,EstablishedDate,RenewedDate,Number,Renewal,Dual} = req.body
+//     CoRegistrationMondel.findOne({email: email})
+//     .then(user => {
+//         if(user){
+//         res.json("Already have an account")}
+//         else{
+//             CoRegistrationMondel.create({NCollege:NCollege,informationF:informationF,Name:Name,Educational:Educational,Specialization:Specialization,email:email,phone:phone,Advisory:Advisory,Departments:Departments,TDepartments:TDepartments,IRBPhone:IRBPhone,IRBEmail:IRBEmail,EstablishedDate:EstablishedDate,RenewedDate:RenewedDate,Number:Number,Renewal:Renewal,Dual:Dual})
+//             .then(result => res.json("Account created"))
+//             .catch(err => res.json("error"))
+//         }
+    
+// }).catch(err => res.json(err))
+
+// })
 //////IRBUpload/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
