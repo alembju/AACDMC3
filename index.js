@@ -2498,12 +2498,26 @@ app.post("/DataCollectionP", DataCollectionPupload.single("file"), async (req, r
   const StudyA2 = req.body.StudyA2;
   const NameContactP2 = req.body.NameContactP2;
   const CPhone2 = req.body.CPhone2;
+
+  const Additiona3DC = req.body.Additiona3DC;
+  const StudyA3 = req.body.StudyA3;
+  const NameContactP3 = req.body.NameContactP3;
+  const CPhone3 = req.body.CPhone3;
+  const Additiona4DC = req.body.Additiona4DC;
+  const StudyA4 = req.body.StudyA4;
+  const NameContactP4 = req.body.NameContactP4;
+  const CPhone4 = req.body.CPhone4;
+  const Additiona5DC = req.body.Additiona5DC;
+  const StudyA5 = req.body.StudyA5;
+  const NameContactP5 = req.body.NameContactP5;
+  const CPhone5 = req.body.CPhone5;
+
   const DStart = req.body.DStart;
   const DTermination = req.body.DTermination;
   
 
   try {
-    await DataCollectionPMondel.create({Name:Name,PhonePI:PhonePI,email:email,title:title,NUniversity:NUniversity,DataC:DataC,StudyA1:StudyA1,NameContactP1:NameContactP1,CPhone1:CPhone1,AdditionalDC:AdditionalDC,StudyA2:StudyA2,NameContactP2:NameContactP2,CPhone2:CPhone2,DStart:DStart,DTermination:DTermination});
+    await DataCollectionPMondel.create({Name:Name,PhonePI:PhonePI,email:email,title:title,NUniversity:NUniversity,DataC:DataC,StudyA1:StudyA1,NameContactP1:NameContactP1,CPhone1:CPhone1,AdditionalDC:AdditionalDC,StudyA2:StudyA2,NameContactP2:NameContactP2,CPhone2:CPhone2,Additiona3DC:Additiona3DC,StudyA3:StudyA3,NameContactP3:NameContactP3,CPhone3:CPhone3,Additiona4DC:Additiona4DC,StudyA4:StudyA4,NameContactP4:NameContactP4,CPhone4:CPhone4,Additiona5DC:Additiona5DC,StudyA5:StudyA5,NameContactP5:NameContactP5,CPhone5:CPhone5, DStart:DStart,DTermination:DTermination});
     res.send({ status: "ok" });
   } catch (error) {
     res.json({ status: error });
@@ -12597,6 +12611,109 @@ app.get("/", async (req, res) => {
 //multer------------------------------------------------------------
 //const multer = require("multer");
 ////////////////////////////////////DataCollectionP///////////
+const ResearchM = multer.diskStorage({
+  // destination: './public/uploads',
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+require("./model/Research");
+
+const ResearchMondel = mongoose.model("Researchs" )
+const ResearchStor = multer({ storage: ResearchM ,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
+  });
+
+app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
+  try {
+    console.log("📩 Received files:", req.files?.map(f => f.originalname));
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+  const { NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
+
+  const streamUpload = (fileBuffer) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { resource_type: "auto", folder: "ReserchProposal" },
+          (error, result) => {
+            if (error) {
+              console.error("❌ Cloudinary error:", error);
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        stream.end(fileBuffer);
+      });
+    };
+
+  
+ const results = [];
+  for (let file of req.files) {
+  const uploaded = await streamUpload(file.path);
+  console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
+  const savedFile = await ResearchMondel.create({
+    NCollege,
+    Department,
+    TDepartment,
+    StudyF,
+    Nadvisor,
+    email,
+    phone,
+    PI,
+    PIPhone,
+    PIemail,
+    Title,
+    FocusA,
+    SPeriodB,
+    SPeriodE,
+    ConductS,
+    Rmethods,
+    Study,
+    Design,
+    TDesign,
+    geographicA,
+    TGeographicA,
+    Slocation,
+    Gender,
+    TGender,
+    populations,
+    MicroD,
+    Eelectronically,
+    Tools,
+    Tcollection,
+    TTcollection,
+    Budget,
+    Geocoordinate,
+    Groups,
+    Dsharing,
+    selectedChoices,
+    Reasons,
+    NewColl,
+    public_id: uploaded.public_id,
+    url: uploaded.secure_url,
+    original_filename: uploaded.original_filename,
+    format: uploaded.format,
+   });
+      results.push(savedFile);
+    }
+
+   res.json({ message: "Uploaded & saved successfully", files: results });
+  } catch (err) {
+    console.error("❌ Upload error (server):", err);
+    res.status(500).json({ message: "Upload failed", error: err.message });
+  }
+});
+
+//////Homepage LabGuidlines/////////////////////////////////////////////////////////
+ //multer------------------------------------------------------------
+//const multer = require("multer");
 // const ResearchM = multer.diskStorage({
 //   // destination: './public/uploads',
 //   filename: function (req, file, cb) {
@@ -12611,185 +12728,83 @@ app.get("/", async (req, res) => {
 // require("./model/Research");
 
 // const ResearchMondel = mongoose.model("Researchs" )
-// const ResearchStor = multer({ storage: ResearchM });
+// const ResearchStor = multer({ storage: ResearchM ,
+//   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
+//   });
+// // const MultipleUploadStorage = multer({ storage: TestMultipleUpload });
 
-// app.post("/ResearchP", upload.array("files", 10), async (req, res) => {
+// app.post("/ResearchP", ResearchStor.array("file", 10), async (req, res) => {
 //   try {
 //     console.log("📩 Received files:", req.files?.map(f => f.originalname));
 //     if (!req.files || req.files.length === 0) {
 //       return res.status(400).json({ message: "No files uploaded" });
 //     }
 //   const { NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
-
-//   const streamUpload = (fileBuffer) => {
-//       return new Promise((resolve, reject) => {
-//         const stream = cloudinary.uploader.upload_stream(
-//           { resource_type: "auto", folder: "ReserchProposal" },
-//           (error, result) => {
-//             if (error) {
-//               console.error("❌ Cloudinary error:", error);
-//               reject(error);
-//             } else {
-//               resolve(result);
-//             }
-//           }
-//         );
-//         stream.end(fileBuffer);
-//       });
-//     };
-
+//   // const {originalname} = req.file;
   
-//  const results = [];
-//   for (let file of req.files) {
-//   const uploaded = await streamUpload(file.path);
-//   console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
-//   const savedFile = await ResearchMondel.create({
-//     NCollege,
-//     Department,
-//     TDepartment,
-//     StudyF,
-//     Nadvisor,
-//     email,
-//     phone,
-//     PI,
-//     PIPhone,
-//     PIemail,
-//     Title,
-//     FocusA,
-//     SPeriodB,
-//     SPeriodE,
-//     ConductS,
-//     Rmethods,
-//     Study,
-//     Design,
-//     TDesign,
-//     geographicA,
-//     TGeographicA,
-//     Slocation,
-//     Gender,
-//     TGender,
-//     populations,
-//     MicroD,
-//     Eelectronically,
-//     Tools,
-//     Tcollection,
-//     TTcollection,
-//     Budget,
-//     Geocoordinate,
-//     Groups,
-//     Dsharing,
-//     selectedChoices,
-//     Reasons,
-//     NewColl,
-//     public_id: uploaded.public_id,
-//     url: uploaded.secure_url,
-//     original_filename: uploaded.original_filename,
-//     format: uploaded.format,
-//    });
-//       results.push(savedFile);
+
+//   const uploadedFiles = [];
+//     for (const file of req.files) {
+//       const result = await cloudinary.uploader.upload(file.path, {
+//         resource_type: "auto", folder: "ReserchProposal"
+//       });
+
+//       // ✅ Save to MongoDB
+//       const savedFile = await ResearchMondel.create({
+//         NCollege,
+//         Department,
+//         TDepartment,
+//         StudyF,
+//         Nadvisor,
+//         email,
+//         phone,
+//         PI,
+//         PIPhone,
+//         PIemail,
+//         Title,
+//         FocusA,
+//         SPeriodB,
+//         SPeriodE,
+//         ConductS,
+//         Rmethods,
+//         Study,
+//         Design,
+//         TDesign,
+//         geographicA,
+//         TGeographicA,
+//         Slocation,
+//         Gender,
+//         TGender,
+//         populations,
+//         MicroD,
+//         Eelectronically,
+//         Tools,
+//         Tcollection,
+//         TTcollection,
+//         Budget,
+//         Geocoordinate,
+//         Groups,
+//         Dsharing,
+//         selectedChoices,
+//         Reasons,
+//         NewColl,
+//         public_id: result.public_id,
+//         secure_url: result.secure_url,
+//         original_filename: file.originalname,
+//         format: result.format,
+//       });
+
+//       uploadedFiles.push(savedFile);
+
+//       // ✅ Remove file from local storage after uploading
+//       fs.unlinkSync(file.path);
 //     }
 
-//    res.json({ message: "Uploaded & saved successfully", files: results });
-//   } catch (err) {
-//     console.error("❌ Upload error (server):", err);
-//     res.status(500).json({ message: "Upload failed", error: err.message });
+//     res.send({ status: "ok" });
+//   } catch (error) {
+//     res.json({ status: error });
 //   }
 // });
-
-//////Homepage LabGuidlines/////////////////////////////////////////////////////////
- //multer------------------------------------------------------------
-//const multer = require("multer");
-const ResearchM = multer.diskStorage({
-  // destination: './public/uploads',
-  filename: function (req, file, cb) {
-    cb(
-      null,
-      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
-    );
-  },
-});
-
-
-require("./model/Research");
-
-const ResearchMondel = mongoose.model("Researchs" )
-const ResearchStor = multer({ storage: ResearchM ,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
-  });
-
-app.post("/ResearchP", upload.array("files", 10), async (req, res) => {
-  try {
-    console.log("📩 Received files:", req.files?.map(f => f.originalname));
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: "No files uploaded" });
-    }
-  const { NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
-  // const {originalname} = req.file;
-  
-
-  const uploadedFiles = [];
-
-    for (const file of req.files) {
-      const result = await cloudinary.uploader.upload(file.path, {
-        resource_type: "auto", folder: "ReserchProposal"
-      });
-
-      // ✅ Save to MongoDB
-      const savedFile = await ResearchMondel.create({
-         NCollege,
-        Department,
-        TDepartment,
-        StudyF,
-        Nadvisor,
-        email,
-        phone,
-        PI,
-        PIPhone,
-        PIemail,
-        Title,
-        FocusA,
-        SPeriodB,
-        SPeriodE,
-        ConductS,
-        Rmethods,
-        Study,
-        Design,
-        TDesign,
-        geographicA,
-        TGeographicA,
-        Slocation,
-        Gender,
-        TGender,
-        populations,
-        MicroD,
-        Eelectronically,
-        Tools,
-        Tcollection,
-        TTcollection,
-        Budget,
-        Geocoordinate,
-        Groups,
-        Dsharing,
-        selectedChoices,
-        Reasons,
-        NewColl,
-        public_id: result.public_id,
-        secure_url: result.secure_url,
-        original_filename: file.originalname,
-        format: result.format,
-      });
-
-      uploadedFiles.push(savedFile);
-
-      // ✅ Remove file from local storage after uploading
-      fs.unlinkSync(file.path);
-    }
-
-    res.send({ status: "ok" });
-  } catch (error) {
-    res.json({ status: error });
-  }
-});
 
 // Fetch all uploaded file info
 app.get("/files", async (req, res) => {
@@ -15656,7 +15671,7 @@ const MultipleUploadMondel = mongoose.model("MultipleUpload");
 const MultipleUploadStorage = multer({ storage: TestMultipleUpload });
 
 // Upload multiple files and save info to MongoDB
-app.post("/MultipleUpload", upload.array("files", 10), async (req, res) => {
+app.post("/MultipleUpload", MultipleUploadStorage.array("files", 10), async (req, res) => {
   try {
     console.log("📩 Received files:", req.files?.map(f => f.originalname));
     if (!req.files || req.files.length === 0) {
