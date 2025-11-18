@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 
 const RegisterSchema = new mongoose.Schema({
    orgname:String,
-    title:String,
+    Title:String,
     principal:String,
     phone:String,
     dsharing:String,
@@ -16,12 +16,13 @@ const RegisterSchema = new mongoose.Schema({
     gender:String,
     type:String,
     cleaned:String,
-    url:String,
+    urlLink:String,
     comments:String,
     email:String,
-  filename:String,
-  public_id:String,
-  imgUrl:String, 
+    public_id:String,
+    url:String,
+    original_filename:String, 
+    format:String,
 },
 {
   timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields

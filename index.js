@@ -9,9 +9,14 @@ const jwt = require('jsonwebtoken')
 const { logger } = require('./middleware/logEvents');
 const ImagesDescriptionMondel = require('./model/ImageDescription')
 const HealthFacilityMondel =require('./model/HealthFacilityinfo')
+const SignupFormBlog =require('./model/SignupForm')
 const session = require('express-session')
 const ImagesMondel = require('./model/imageDetails')
 const Blog = require('./model/Blog')
+const User = require('./model/User')
+const BlogUser = require('./model/BlogUser')
+const Blogcomment = require('./model/Blogcomment')
+const cookieParser = require("cookie-parser");
 const FileEntry = require('./model/FileEntry')
 const Log = require('./model/Log')
 const Form = require('./model/Form')
@@ -19,6 +24,7 @@ const NewsFeedMondel = require('./model/NewsFeedMondel')
 const EVENTSMondel = require('./model/Events')
 const RepDeseaseMondel = require('./model/RepDesease')
 const MongoDBStore = require('connect-mongodb-session')(session);
+const MongoStore = require("connect-mongo");
 const emailRoutes = require("./routes/emailRoutes");
 const dotenv = require("dotenv");
 const helmet = require('helmet');
@@ -41,6 +47,8 @@ const ImageKit = require("imagekit");
 const { v4: uuidv4 } = require("uuid");
 const streamifier = require("streamifier");
 
+const JWT_SECRET =process.env.JWT_SECRET;
+
 
 
 
@@ -51,11 +59,11 @@ const { connect } = require('node:http2');
 const SECRET_KEY = 'super-secret-key'
 dotenv.config();
 
-const corsOptions = {
-  origin: "*",
-  credentials: true, //access-control-allow-credentials:true
-  optionSuccessStatus: 200,
-};
+// const corsOptions = {
+//   origin: "*",
+//   credentials: true, //access-control-allow-credentials:true
+//   optionSuccessStatus: 200,
+// };
 
 const app = express();
 
@@ -64,7 +72,7 @@ app.use((req, res, next) => {
   res.setTimeout(600000);
   next();
 });
-app.use(cors())
+// app.use(cors())
 //Enable CORS for frontend
 // app.use(cors({
 //   origin: 'http://localhost:3000', // React app URL
@@ -72,6 +80,17 @@ app.use(cors())
 // }));
 app.use(logger);
 app.use(express.json({limit:'500mb'}));
+app.use(cookieParser());
+// ✅ CORS fix for credentials
+app.use(cors({
+  origin: "http://localhost:5173",  // your React dev server
+  credentials: true                 // allow cookies/sessions
+}));
+
+function requireLogin(req, res, next) {
+  if (req.session && req.session.user) return next();
+  return res.status(401).json({ message: "Login required" });
+}
 //app.use(bodyParser.urlencoded({limit:'50mb', extended: true}))
 const server = createServer(app);
 const io = new Server(server);
@@ -137,6 +156,29 @@ app.use(bodyParser.json())
 // console.log(process.env.MONGO_URL)
   //const MONGO_URL = process.env.MONGO_URL ;
  mongoose.connect(process.env.MONGO_URL , { useNewUrlParser: true, useUnifiedTopology: true })
+ const store = MongoStore.create({
+  mongoUrl: process.env.MONGO_URL,
+  collectionName: "sessions",
+});
+
+// ✅ Express session middleware (no localStorage used)
+// app.use(session({
+//   secret: JWT_SECRET,
+//   resave: false,
+//   saveUninitialized: false,
+// }));
+// const session = require("express-session");
+
+app.use(session({
+  secret: JWT_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: false,  // true only if HTTPS
+    sameSite: "lax"
+  }
+}));
 //mongoose.connect("")
 // async function Connect() {
 //   try{
@@ -149,9 +191,20 @@ app.use(bodyParser.json())
 // connect()
 
 
+// ==== AUTH MIDDLEWARE ====
+const verifyToken = (req, res, next) => {
+  const token = req.cookies.token;
+  if (!token) return res.status(401).json({ message: "No token" });
 
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ message: "Invalid token" });
+    req.userId = decoded.id;
+    req.userName = decoded.name;
+    next();
+  });
+};
 ////////////////////////////------------Authontication ------//////////////////
-const JWT_SECRET =process.env.JWT_SECRET;
+
 
 
   require("./model/userDetails");
@@ -499,11 +552,43 @@ app.get("/", (req,res) => {
 } )
 
 ///fetching from register collection---------------
-app.get('/fetching',(req, res) =>{
+// app.get('/fetching',(req, res) =>{
     
-    RegisterMondel.find()
-    .then(users => res.json(users))
-    .catch(err => console.log(err))  
+//     RegisterMondel.find()
+//     .then(users => res.json(users))
+//     .catch(err => console.log(err))  
+//     })
+
+    //////////////////////////////////fetching from register collection//////////
+app.get('/fetching', async(req, res) =>{
+    
+    //ResearchMondel.find()
+    const allUser = await RegisterMondel.find({});
+  const page = parseInt(req.query.page)
+  const limit = parseInt(req.query.limit)
+
+  const startIndex = (page - 1) * limit
+  const lastIndex = (page) * limit
+
+  const results = {}
+  results.totalUser=allUser.length;
+  results.pageCount=Math.ceil(allUser.length/limit);
+
+  if (lastIndex < allUser.length) {
+    results.next = {
+      page: page + 1,
+    }
+  }
+  if (startIndex > 0) {
+    results.prev = {
+      page: page - 1,
+    }
+  }
+  results.result = allUser.slice(startIndex, lastIndex);
+  res.json(results)
+    //.then(user => res.json(user))
+    //.catch(err => console.log(err))  
+    ///passswpred---------invg pgzi yrbs qntc----
     })
     ///////////////fetchin newsheadline////////////
     app.get('/NewsHeadline',(req, res) =>{
@@ -718,6 +803,31 @@ app.get('/Facility-info',(req, res) =>{
   .then(users => res.json(users))
   .catch(err => console.log(err))  
   })
+   ///fetching file from reserch----------
+app.get("/Facility-infoRumer", async (req, res) => {
+  try {
+    // You can filter by query, e.g. ?type=image
+    const filter = {};
+    if (req.query.HSubCity) filter.HFName = req.query.HSubCity;
+
+    // Aggregation to remove duplicates based on email
+    const uniqueFiles = await HealthFacilityMondel.aggregate([
+      { $match: filter },
+      { $sort: { createdAt: 1 } },
+      {
+        $group: {
+          _id: "$HFName",
+          doc: { $first: "$$ROOT" }
+        }
+      },
+      { $replaceRoot: { newRoot: "$doc" } }
+    ]);
+
+    res.json(uniqueFiles);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
   ////////////// fetching Vram with selection option /////////////
 
 app.get('/Fetch-VRAM',(req, res) =>{
@@ -752,13 +862,38 @@ app.get('/EventHeadline',(req, res) =>{
 
 
     ////////////// fetching with selection option /////////////
+    ///fetching file from reserch----------
+app.get("/fetching-option", async (req, res) => {
+  try {
+    // You can filter by query, e.g. ?type=image
+    const filter = {};
+    if (req.query.PI) filter.PI = req.query.PI;
 
-    app.get('/fetching-option',(req, res) =>{
+    // Aggregation to remove duplicates based on email
+    const uniqueFiles = await ResearchMondel.aggregate([
+      { $match: filter },
+      { $sort: { createdAt: 1 } },
+      {
+        $group: {
+          _id: "$PIemail",
+          doc: { $first: "$$ROOT" }
+        }
+      },
+      { $replaceRoot: { newRoot: "$doc" } }
+    ]);
+
+    res.json(uniqueFiles);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+    // app.get('/fetching-option',(req, res) =>{
     
-        ResearchMondel.find()
-        .then(users => res.json(users))
-        .catch(err => console.log(err))  
-        })
+    //     ResearchMondel.find()
+    //     .then(users => res.json(users))
+    //     .catch(err => console.log(err))  
+    //     })
 
 
         ////////////////////////////fetchinf measeles for Admin dashbored////////////
@@ -1876,7 +2011,142 @@ app.post("/IMG-Description" ,(req, res) => {
     
     
 ///fetching file from reserch----------
+// app.get("/fetching-Rech", async (req, res) => {
+//    try {
+//     // You can filter by query, e.g. ?type=image
+//     const filter = {};
+//     if (req.query.PI) filter.PI = req.query.PI;
 
+//     // Aggregation to remove duplicates based on email
+//     const uniqueFiles = await ResearchMondel.aggregate([
+//       { $match: filter },
+//       { $sort: { createdAt: 1 } },
+//       {
+//         $group: {
+//           _id: "$PIemail",
+//           doc: { $first: "$$ROOT" }
+//         }
+//       },
+//       { $replaceRoot: { newRoot: "$doc" } }
+//     ]);
+    
+//   const page = parseInt(req.query.page) || 1;
+// const limit = parseInt(req.query.limit) || 10;
+
+//   const startIndex = (page - 1) * limit
+//   const lastIndex = (page) * limit
+
+//   const results = {}
+//   results.totalUser=uniqueFiles.length;
+//   results.pageCount=Math.ceil(uniqueFiles.length/limit);
+
+//   if (lastIndex < uniqueFiles.length) {
+//     results.next = {
+//       page: page + 1,
+//     }
+//   }
+//   if (startIndex > 0) {
+//     results.prev = {
+//       page: page - 1,
+//     }
+//   }
+//   results.result = uniqueFiles.slice(startIndex, lastIndex);
+//   res.json(results)
+//     //.then(user => res.json(user))
+//     //.catch(err => console.log(err))  
+//     ///passswpred---------invg pgzi yrbs qntc----
+//     } catch (err) {
+//     console.error("Error fetching research:", err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+// ✅ Default route
+app.get("/", (req, res) => {
+  res.send("MERN Signup API running...");
+});
+
+// ✅ Register API (POST)
+app.post("/api/users/register", async (req, res) => {
+  try {
+    const { name, fatherName, email, phone, birthday, gender, password } = req.body;
+
+    // Validate fields
+    if (!name || !fatherName || !email || !phone || !birthday || !gender || !password) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    // Check if user already exists
+    const existingUser = await SignupFormBlog.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Save user
+    const newUser = new SignupFormBlog({
+      name,
+      fatherName,
+      email,
+      phone,
+      birthday,
+      gender,
+      password: hashedPassword,
+    });
+
+    await newUser.save();
+
+    return res.status(201).json({
+      message: "🎉 User registered successfully!",
+      user: {
+        id: newUser._id,
+        name: newUser.name,
+        email: newUser.email,
+      },
+    });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ✅ LOGIN Route
+app.post("/api/users/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password)
+      return res.status(400).json({ message: "Email and password are required" });
+
+    const user = await SignupFormBlog.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+
+    // Create JWT Token
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET || "secret123",
+      { expiresIn: "2h" }
+    );
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    console.error("Login Error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+//////////////////////////////////fetchinf reserch for reserch unit//////////
 app.get('/fetching-Rech', async(req, res) =>{
     
     //ResearchMondel.find()
@@ -1953,81 +2223,84 @@ app.get("/", (req, res) => {
 });
 ///////////////////////////multer attached file for email/////////////
 
+// Multer storage
 const Esend = multer.diskStorage({
-  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    cb(
-      null,
-      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
-    );
+    cb(null, file.fieldname + "-" + Date.now() + path.extname(file.originalname));
   },
 });
 
- require("./model/Esend");
+require("./model/Esend");
+const EsendModel = mongoose.model("Esend");
 
-const EsendMondel  = mongoose.model("Esend" )
-// const DataCollectionPupload = multer({ storage: DataCollectionP });
+const attached = multer({ storage: Esend });
 
-const attached = multer({storage: Esend });
-app.post("/Esend", attached.single("file"), async(req, res) =>{
-  try{
-  const {PrincipalI, Title,email,messages,Statua} = req.body;
-  //const fileName = req.file.filename;
-  //const file= req.file;
-  const file = req.file.path;
-  const {originalname} = req.file;
-   const cloudinaryEsend = await cloudinary.uploader.upload(file, {
-    folder: "attached",
-    resource_type: 'Auto',
-    format: 'pdf',
-    allowed_formats: ['pdf']
-  });
-   const savetoDb = await EsendMondel.create({
-    PrincipalI,
-    Title,
-    email,
-    messages,
-    Statua,
-    filename:originalname,
-    public_id: cloudinaryEsend.public_id,
-    imgUrl: cloudinaryEsend.secure_url,
-  });
+app.post("/Esend", attached.single("file"), async (req, res) => {
+  try {
+    const { PrincipalI, Title, email, messages, Statua } = req.body;
 
-  console.log(PrincipalI,Title,email, messages,file,Statua);
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_MAIL, // generated ethereal user
-    pass: process.env.SMTP_PASSWORD, // generated ethereal password
-  },
-})
+    // File path from multer
+    const filePath = req.file.path;
 
+    // Upload file to Cloudinary
+    const cloudinaryEsend = await cloudinary.uploader.upload(filePath, {
+      folder: "attached",
+      resource_type: "auto",
+    });
 
-  const mailOptions = {
-    from: process.env.SMTP_MAIL,
-    to: email,
-    Principal_Investigator: PrincipalI,
-    subject: Title,
-    text: messages,
-    Status:Statua,
-    html: `<p>Principal_Investigator:${PrincipalI}</p><p>email:${email}</p><p>Subject:${Title}</p><p>messages: ${messages}</p><p>Statua: ${Statua}</p>`,
-    attachments: [
-      {
-        filename: file.originalname,
-        path: file.imgUrl,
+    // Save data to MongoDB
+    const savetoDb = await EsendModel.create({
+      PrincipalI,
+      Title,
+      email,
+      messages,
+      Statua,
+      filename: req.file.originalname,
+      public_id: cloudinaryEsend.public_id,
+      imgUrl: cloudinaryEsend.secure_url,
+    });
+
+    console.log("Saved:", savetoDb);
+
+    // Configure email transport
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_MAIL,
+        pass: process.env.SMTP_PASSWORD,
       },
-    ],
-  };
-  await transporter.sendMail(mailOptions); 
-      res.status(200).send('Email sent successfully!'); 
-      // res.render("index.ejs", { url: cloudinaryEsend.secure_url });
-    } catch  (error) 
-    { res.status(500).send('Error sending email'); 
-      console.error(error); 
-    } 
-}); 
+    });
+
+    // Send email with attachment from Cloudinary
+    const mailOptions = {
+      from: process.env.SMTP_MAIL,
+      to: email,
+      subject: Title,
+      html: `
+        <p><b>Principal Investigator:</b> ${PrincipalI}</p>
+        <p><b>Email:</b> ${email}</p>
+        <p><b>Subject:</b> ${Title}</p>
+        <p><b>Message:</b> ${messages}</p>
+        <p><b>Status:</b> ${Statua}</p>
+      `,
+      attachments: [
+        {
+          filename: req.file.originalname,
+          path: cloudinaryEsend.secure_url, // Attach file from Cloudinary URL
+        },
+      ],
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    res.send({ status: "ok", message: "Email sent and file saved successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
+});
 //   app.get("/get-Esend", async (req, res) => {
 //   try {
 //     EsendMondel.find({}).sort({createdAt: -1}).then((data) => {
@@ -2397,8 +2670,7 @@ app.post("/SighnupIRB", async (req, res) => {
 }); 
 
 
-//multer------------------------------------------------------------
-//const multer = require("multer");
+////////////////////////////////////Uploading RTDS///////////
 const storage = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -2409,26 +2681,46 @@ const storage = multer.diskStorage({
   },
 });
 
-
 require("./model/Register");
 
 const RegisterMondel  = mongoose.model("register" )
-const upload = multer({ storage: storage });
-
-app.post("/upload", upload.single("file"), async (req, res) => {
-  //  console.log("This is my file ",req.file)
-  const file = req.file.path;
-  const {orgname,title,principal,phone,dsharing,availability,coverage,BGDate,LDate,gender,type,raw,cleaned,url,comments,email} = req.body;
-  const {originalname} = req.file;
-
-  const cloudinaryupload = await cloudinary.uploader.upload(file, {
-    folder: "upload",
-     resource_type: "auto"
+const upload = multer({ storage: storage ,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 5 MB limit
   });
-try {
-  const savetoDb = await RegisterMondel.create({
+
+app.post("/upload", upload.array("files", 10), async (req, res) => {
+  try {
+    console.log("📩 Received files:", req.files?.map(f => f.originalname));
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+ const {orgname,Title,principal,phone,dsharing,availability,coverage,BGDate,LDate,gender,type,raw,cleaned,urlLink,comments,email} = req.body;
+
+  const streamUpload = (fileBuffer) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { resource_type: "auto", folder: "upload" },
+          (error, result) => {
+            if (error) {
+              console.error("❌ Cloudinary error:", error);
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        stream.end(fileBuffer);
+      });
+    };
+
+  
+ const results = [];
+  for (let file of req.files) {
+  const uploaded = await streamUpload(file.path);
+  console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
+  const savedFile = await RegisterMondel.create({
     orgname,
-    title,
+    Title,
     principal,
     phone,
     dsharing,
@@ -2440,27 +2732,109 @@ try {
     type,
     raw,
     cleaned,
-    url,
+    urlLink,
     comments,
     email,
-    filename: originalname,
-    public_id: cloudinaryupload.public_id,
-    imgUrl: cloudinaryupload.secure_url,
-  });
+    public_id: uploaded.public_id,
+    url: uploaded.secure_url,
+    original_filename: uploaded.original_filename,
+    format: uploaded.format,
+   });
+      results.push(savedFile);
+    }
 
-  res.send({ status: "ok" });
-} catch (error) {
-  res.json({ status: error });
-}
+   res.json({ message: "Uploaded & saved successfully", files: results });
+  } catch (err) {
+    console.error("❌ Upload error (server):", err);
+    res.status(500).json({ message: "Upload failed", error: err.message });
+  }
 });
+// app.get("/get-upload", async (req, res) => {
+//   try {
+//     RegisterMondel.find({}).sort({createdAt: -1}).then((data) => {
+//       res.send({ status: "ok", data: data });
+//     });
+//   } catch (error) {}
+// });
+ app.get('/get-upload',(req, res) =>{
+    
+    RegisterMondel.find({}).sort({createdAt: -1})
+    .then(users => res.json(users))
+    .catch(err => console.log(err))  
+    })
 
-app.get("/get-OutbreakI", async (req, res) => {
+    app.get("/get-uploadView", async (req, res) => {
   try {
     RegisterMondel.find({}).sort({createdAt: -1}).then((data) => {
       res.send({ status: "ok", data: data });
     });
   } catch (error) {}
 });
+//multer------------------------------------------------------------
+//const multer = require("multer");
+// const storage = multer.diskStorage({
+//   // destination: './public/uploads',
+//   filename: function (req, file, cb) {
+//     cb(
+//       null,
+//       file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+//     );
+//   },
+// });
+
+
+
+// require("./model/Register");
+
+// const RegisterMondel  = mongoose.model("register" )
+// const upload = multer({ storage: storage });
+
+// app.post("/upload", upload.single("file"), async (req, res) => {
+//   //  console.log("This is my file ",req.file)
+//   const file = req.file.path;
+//   const {orgname,title,principal,phone,dsharing,availability,coverage,BGDate,LDate,gender,type,raw,cleaned,url,comments,email} = req.body;
+//   const {originalname} = req.file;
+
+//   const cloudinaryupload = await cloudinary.uploader.upload(file, {
+//     folder: "upload",
+//      resource_type: "auto"
+//   });
+// try {
+//   const savetoDb = await RegisterMondel.create({
+//     orgname,
+//     title,
+//     principal,
+//     phone,
+//     dsharing,
+//     availability,
+//     coverage,
+//     BGDate,
+//     LDate,
+//     gender,
+//     type,
+//     raw,
+//     cleaned,
+//     url,
+//     comments,
+//     email,
+//     filename: originalname,
+//     public_id: cloudinaryupload.public_id,
+//     imgUrl: cloudinaryupload.secure_url,
+//   });
+
+//   res.send({ status: "ok" });
+// } catch (error) {
+//   res.json({ status: error });
+// }
+// });
+
+// app.get("/get-OutbreakI", async (req, res) => {
+//   try {
+//     RegisterMondel.find({}).sort({createdAt: -1}).then((data) => {
+//       res.send({ status: "ok", data: data });
+//     });
+//   } catch (error) {}
+// });
 
 
 
@@ -2669,41 +3043,114 @@ app.post("/DataCollectionC", DataCollectionCupload.array("files", 10), async (re
 //multer------------------------------------------------------------
 //const multer = require("multer");
 
+// const Request = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, "./Images");
+//   },
+//   filename: function (req, file, cb) {
+//     const uniqueSuffix = Date.now();
+//     cb(null, uniqueSuffix + file.originalname);
+//   },
+// });
+
+// require("./model/RequestList");
+
+// const RequestMondel  = mongoose.model("Requests" )
+// const REQupload = multer({ storage: Request });
+
+// app.post("/file-Request", REQupload.single("file"), async (req, res) => {
+//   console.log(req.file);
+//   const Name = req.body.Name;
+//   const phone = req.body.phone;
+//   const emaill = req.body.emaill;
+//   const Title = req.body.Title;
+//   const Reaseon = req.body.Reaseon;
+//   const Affiliation = req.body.Affiliation;
+//   const email = req.body.email;
+//   const messages = req.body.messages;
+//   const isCheked = req.body.isCheked;
+  
+//   try {
+//     await RequestMondel.create({Name:Name,phone:phone,emaill:emaill,Title:Title,Reaseon:Reaseon,Affiliation:Affiliation,email:email,messages:messages,isCheked:isCheked});
+//     res.send({ status: "ok" });
+//   } catch (error) {
+//     res.json({ status: error });
+//   }
+// });
+
+///////////////////////////////////////////////the new request//////////
+////////////////////////////////////Uploading RTDS///////////
 const Request = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./Images");
-  },
+  // destination: './public/uploads',
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
   },
 });
 
 require("./model/RequestList");
 
 const RequestMondel  = mongoose.model("Requests" )
-const REQupload = multer({ storage: Request });
+const REQupload = multer({ storage: Request  ,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 5 MB limit
+  });
 
 app.post("/file-Request", REQupload.single("file"), async (req, res) => {
-  console.log(req.file);
-  const Name = req.body.Name;
-  const phone = req.body.phone;
-  const emaill = req.body.emaill;
-  const Title = req.body.Title;
-  const Reaseon = req.body.Reaseon;
-  const Affiliation = req.body.Affiliation;
-  const email = req.body.email;
-  const messages = req.body.messages;
-  const isCheked = req.body.isCheked;
-  
   try {
-    await RequestMondel.create({Name:Name,phone:phone,emaill:emaill,Title:Title,Reaseon:Reaseon,Affiliation:Affiliation,email:email,messages:messages,isCheked:isCheked});
-    res.send({ status: "ok" });
-  } catch (error) {
-    res.json({ status: error });
+    console.log("📩 Received files:", req.files?.map(f => f.originalname));
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+ const {Name,phone,emaill,Title,Reaseon,Affiliation,email,messages,isCheked} = req.body;
+
+  const streamUpload = (fileBuffer) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { resource_type: "auto", folder: "RequestList" },
+          (error, result) => {
+            if (error) {
+              console.error("❌ Cloudinary error:", error);
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        stream.end(fileBuffer);
+      });
+    };
+
+  
+ const results = [];
+  for (let file of req.files) {
+  const uploaded = await streamUpload(file.path);
+  console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
+  const savedFile = await RequestMondel.create({
+    Name,
+    phone,
+    emaill,
+    Title,
+    Reaseon,
+    Affiliation,
+    email,
+    messages,
+    isCheked,
+    public_id: uploaded.public_id,
+    url: uploaded.secure_url,
+    original_filename: uploaded.original_filename,
+    format: uploaded.format,
+   });
+      results.push(savedFile);
+    }
+
+   res.json({ message: "Uploaded & saved successfully", files: results });
+  } catch (err) {
+    console.error("❌ Upload error (server):", err);
+    res.status(500).json({ message: "Upload failed", error: err.message });
   }
 });
-
 /*app.get("/get-files", async (req, res) => {
   try {
     RegisterMondel.find({}).then((data) => {
@@ -12928,7 +13375,7 @@ app.get("/Gete-Survey", async (req, res) => {
 
 app.get("/Gete-Other", async (req, res) => {
   try {
-    const singleMeasel= ResearchMondel.find().or([{StudyF:"Other"}]) .countDocuments().then((data) => {
+    const singleMeasel= ResearchMondel.find().or([{StudyF:"Other"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(singleMeasel)
     });
@@ -12936,7 +13383,7 @@ app.get("/Gete-Other", async (req, res) => {
 });
 app.get("/Gete-Qualitative", async (req, res) => {
   try {
-    const Qualitative= ResearchMondel.find().or([{Rmethods:"Qualitative"}]) .countDocuments().then((data) => {
+    const Qualitative= ResearchMondel.find().or([{Rmethods:"Qualitative"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Qualitative)
     });
@@ -12944,7 +13391,7 @@ app.get("/Gete-Qualitative", async (req, res) => {
 });
 app.get("/Gete-Quantitative", async (req, res) => {
   try {
-    const Quantitative= ResearchMondel.find().or([{Rmethods:"Quantitative"}]) .countDocuments().then((data) => {
+    const Quantitative= ResearchMondel.find().or([{Rmethods:"Quantitative"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Quantitative)
     });
@@ -12952,7 +13399,7 @@ app.get("/Gete-Quantitative", async (req, res) => {
 });
 app.get("/Gete-Mixed", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{Rmethods:"Mixed"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{Rmethods:"Mixed"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -12960,7 +13407,7 @@ app.get("/Gete-Mixed", async (req, res) => {
 });
 app.get("/Gete-National", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"National"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"National"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -12969,7 +13416,7 @@ app.get("/Gete-National", async (req, res) => {
 
 app.get("/Gete-Region", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Region | City"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Region | City"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -12977,7 +13424,7 @@ app.get("/Gete-Region", async (req, res) => {
 });
 app.get("/Gete-SubCity", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Zone | Sub City"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Zone | Sub City"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -12985,7 +13432,7 @@ app.get("/Gete-SubCity", async (req, res) => {
 });
 app.get("/Gete-Woreda", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Woreda"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Woreda"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -12993,7 +13440,7 @@ app.get("/Gete-Woreda", async (req, res) => {
 });
 app.get("/Gete-Kebele", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Kebele"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Kebele"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -13001,7 +13448,7 @@ app.get("/Gete-Kebele", async (req, res) => {
 });
 app.get("/Gete-Program", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Program/research implementation woreda or kebele"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Program/research implementation woreda or kebele"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -13009,7 +13456,7 @@ app.get("/Gete-Program", async (req, res) => {
 });
 app.get("/Gete-Departmental", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Departmental"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Departmental"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -13017,7 +13464,7 @@ app.get("/Gete-Departmental", async (req, res) => {
 });
 app.get("/Gete-Facility", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Facility"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Facility"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -13025,7 +13472,7 @@ app.get("/Gete-Facility", async (req, res) => {
 });
 app.get("/Gete-Global", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Global"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Global"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -13033,7 +13480,7 @@ app.get("/Gete-Global", async (req, res) => {
 });
 app.get("/Gete-NotRepresentative", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Not representative"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Not representative"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -13041,7 +13488,7 @@ app.get("/Gete-NotRepresentative", async (req, res) => {
 });
 app.get("/Gete-Others", async (req, res) => {
   try {
-    const Mixed= ResearchMondel.find().or([{geographicA:"Others"}]) .countDocuments().then((data) => {
+    const Mixed= ResearchMondel.find().or([{geographicA:"Others"}]).countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(Mixed)
     });
@@ -16008,29 +16455,96 @@ app.post('/posts/:id/comments', async (req, res) => {
 });
 
 //////////////////////////////////////////BlogPost////////////////////////////////////////HFUpdate
+// Signup
+app.post("/signup", async (req, res) => {
+    const {name, email, password, gender, birthday, education} = req.body;
 
-// Create blog post
-app.post('/api/blogs', async (req, res) => {
-  const { title, content } = req.body;
-  const blog = new Blog({title, content, comments: []});
-  await blog.save();
-  res.json(blog);
+    if (await User.findOne({ email }))
+        return res.status(400).json({ message: "Email exists" });
+
+    const hashed = await bcrypt.hash(password, 10);
+    const user = new User({ name, email, password: hashed , gender, birthday, education});
+    await user.save();
+
+    req.session.userId = user._id;
+    req.session.userName = user.name;
+
+    res.json({ message: "Signup success", user: user.name });
+});
+
+// Login
+app.post("/login", async (req, res) => {
+    const user = await User.findOne({ email: req.body.email });
+
+    if (!user) return res.status(400).json({ message: "Invalid email" });
+
+    const ok = await bcrypt.compare(req.body.password, user.password);
+    if (!ok) return res.status(400).json({ message: "Invalid password" });
+
+    req.session.userId = user._id;
+    req.session.userName = user.name;
+
+    res.json({ message: "Logged in", user: user.name });
+});
+
+// Create Blog
+app.post("/api/blogs", async (req, res) => {
+    if (!req.session.userId)
+        return res.status(403).json({ message: "Login required" });
+
+    const newBlog = new Blog({
+        title: req.body.title,
+        content: req.body.content,
+        author: req.session.userName
+    });
+
+    await newBlog.save();
+    res.json(newBlog);
 });
 
 // Get all blogs
-app.get('/api/blogs', async (req, res) => {
-  const blogs = await Blog.find();
-  res.json(blogs);
+app.get("/api/blogs", async (req, res) => {
+    const blogs = await Blog.find();
+    res.json(blogs);
 });
 
-// Add comment to blog
-app.post('/api/blogs/:id/comments', async (req, res) => {
-  const { text } = req.body;
-  const blog = await Blog.findById(req.params.id);
-  blog.comments.push({ text });
-  await blog.save();
-  res.json(blog);
+// Post comment
+app.post("/api/blogs/:id/comments", async (req, res) => {
+    if (!req.session.userId)
+        return res.status(403).json({ message: "Login required" });
+
+    const blog = await Blog.findById(req.params.id);
+
+    blog.comments.push({
+        user: req.session.userName,
+        text: req.body.text
+    });
+
+    await blog.save();
+    res.json({ success: true });
 });
+// // Create blog post
+// app.post('/api/blogs', async (req, res) => {
+//   const { title, content } = req.body;
+//   const blog = new Blog({title, content, comments: []});
+//   await blog.save();
+//   res.json(blog);
+// });
+
+// // Get all blogs
+// app.get('/api/blogs', async (req, res) => {
+//   const blogs = await Blog.find();
+//   res.json(blogs);
+// });
+
+// // Add comment to blog
+// app.post('/api/blogs/:id/comments', async (req, res) => {
+//   const { text } = req.body;
+//   const blog = await Blog.findById(req.params.id);
+//   blog.comments.push({ text });
+//   await blog.save();
+//   res.json(blog);
+// });
 
 
 

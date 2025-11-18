@@ -1,7 +1,26 @@
 const mongoose = require('mongoose')
 
-const RequestSchema= new mongoose.Schema({
-    Name:String,
+// const RequestSchema= new mongoose.Schema({
+//     Name:String,
+//     phone:String,
+//     emaill:String,
+//     Title:String,
+//     Reaseon:String,
+//     Affiliation:String,
+//     email:String,
+//     messages:String,
+//     isCheked:String,
+   
+    
+// },
+// { collection: "Requests" }
+// );
+
+// mongoose.model("Requests" , RequestSchema)
+
+
+const RequestSchema = new mongoose.Schema({
+   Name:String,
     phone:String,
     emaill:String,
     Title:String,
@@ -10,10 +29,13 @@ const RequestSchema= new mongoose.Schema({
     email:String,
     messages:String,
     isCheked:String,
-   
-    
+    public_id:String,
+    url:String,
+    original_filename:String, 
+    format:String,
 },
-{ collection: "Requests" }
+{
+  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+}
 );
-
-mongoose.model("Requests" , RequestSchema)
+module.exports = mongoose.model('Requests', RequestSchema);
