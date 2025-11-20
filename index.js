@@ -83,7 +83,7 @@ app.use(express.json({limit:'500mb'}));
 app.use(cookieParser());
 // ✅ CORS fix for credentials
 app.use(cors({
-  origin: "http://localhost:5173",  // your React dev server
+  origin: "https://aacdmc.gov.et/",  // your React dev server
   credentials: true                 // allow cookies/sessions
 }));
 
@@ -16473,19 +16473,46 @@ app.post("/signup", async (req, res) => {
 });
 
 // Login
-app.post("/login", async (req, res) => {
-    const user = await User.findOne({ email: req.body.email });
+// app.post("/login", async (req, res) => {
+//     const user = await User.findOne({ email: req.body.email });
 
-    if (!user) return res.status(400).json({ message: "Invalid email" });
+//     if (!user) return res.status(400).json({ message: "Invalid email" });
+
+//     const ok = await bcrypt.compare(req.body.password, user.password);
+//     if (!ok) return res.status(400).json({ message: "Invalid password" });
+
+//     req.session.userId = user._id;
+//     req.session.userName = user.name;
+
+//     res.json({ message: "Logged in", user: user.name });
+// });
+
+app.post("/login", async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) return res.status(401).json({ message: "Invalid email" });
 
     const ok = await bcrypt.compare(req.body.password, user.password);
-    if (!ok) return res.status(400).json({ message: "Invalid password" });
+    if (!ok) return res.status(401).json({ message: "Invalid password" });
 
+    // Create session + cookie
     req.session.userId = user._id;
     req.session.userName = user.name;
 
-    res.json({ message: "Logged in", user: user.name });
+    res.cookie("token", "loggedin", {
+      httpOnly: true,
+      secure: false,  // use true in HTTPS
+      sameSite: "NON"
+    });
+
+    res.json({ message: "Login successful", name: user.name });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
+
 
 // Create Blog
 app.post("/api/blogs", async (req, res) => {
@@ -16522,6 +16549,12 @@ app.post("/api/blogs/:id/comments", async (req, res) => {
 
     await blog.save();
     res.json({ success: true });
+});
+/////////////Logout in bloglist
+app.post("/logout", (req, res) => {
+    res.clearCookie("token");
+    req.session.destroy(() => {});
+    return res.json({ message: "Logged out" });
 });
 // // Create blog post
 // app.post('/api/blogs', async (req, res) => {
