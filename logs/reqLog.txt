@@ -283137,3 +283137,17 @@
 20251120	16:17:39	98ec450b-a011-4edf-abfa-6d41744dcba7	OPTIONS	http://localhost:5173	/logout
 20251120	16:17:39	400fdf92-4405-41ad-96f2-56a11669147c	POST	http://localhost:5173	/logout
 20251120	16:17:40	c9789e96-1201-4362-9af8-a760cf2f5d3e	POST	http://localhost:5173	/logout
+20251122	11:20:41	ceb3ec19-9bfb-41cd-b793-55cd59b953c1	OPTIONS	http://localhost:5173	/login
+20251122	11:20:42	a2fe22a3-d993-4c92-b618-f0f1f5a66dd0	POST	http://localhost:5173	/login
+20251122	11:37:38	c8a6e1d2-b19c-4e47-8838-8971ee82c0de	OPTIONS	http://localhost:5173	/login
+20251122	11:38:23	3fef4efc-77a2-4ab4-856d-ea41c7646387	OPTIONS	http://localhost:5173	/login
+20251122	11:38:35	be7f8f00-86b7-4c96-8ec9-ab808a061994	OPTIONS	http://localhost:5173	/login
+20251122	11:38:57	173a62c7-9caa-4bb2-8771-18d1816d1f75	OPTIONS	http://localhost:5173	/login
+20251122	11:40:35	d51c8845-37eb-495a-a337-c96746fd43f6	OPTIONS	http://localhost:5173	/login
+20251122	11:40:35	5de6e640-1cb0-4f8c-8e9c-dc4dc2bff9d9	POST	http://localhost:5173	/login
+20251122	11:41:33	d58ad9a6-32ee-495b-8086-f0c2aee28f46	OPTIONS	http://localhost:5173	/logout
+20251122	11:41:36	09bddb20-2a72-460a-9810-76c7f1881f85	OPTIONS	http://localhost:5173	/logout
+20251122	11:42:10	71315fd9-78bf-4b10-be2c-a1214b9852d2	OPTIONS	http://localhost:5173	/login
+20251122	11:42:16	9d823397-34f1-4c51-856d-e3f41530ec20	OPTIONS	http://localhost:5173	/login
+20251122	11:43:34	d0a9777d-a65a-4eeb-8b9c-a557787bb9d3	OPTIONS	http://localhost:5173	/login
+20251122	11:43:35	cde719d7-a15a-463c-b6a6-8f919a9fde69	POST	http://localhost:5173	/login

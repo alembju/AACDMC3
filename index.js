@@ -83,7 +83,7 @@ app.use(express.json({limit:'500mb'}));
 app.use(cookieParser());
 // ✅ CORS fix for credentials
 app.use(cors({
-  origin: "https://aacdmc.gov.et/",  // your React dev server
+  origin: [ "https://aacdmc.gov.et", "*" ,'http://localhost:5173'],  // your React dev server
   credentials: true                 // allow cookies/sessions
 }));
 

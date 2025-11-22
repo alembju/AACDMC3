@@ -2034,3 +2034,6 @@
 2025-11-20T12:49:03.477Z | guest | GET /api/blogs
 2025-11-20T13:17:40.570Z | guest | POST /logout
 2025-11-20T13:17:40.612Z | guest | POST /logout
+2025-11-22T08:20:43.616Z | guest | POST /login
+2025-11-22T08:40:35.806Z | guest | POST /login
+2025-11-22T08:43:35.012Z | guest | POST /login
