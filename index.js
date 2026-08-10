@@ -1,106 +1,141 @@
-const express = require('express')
-const mongoose = require('mongoose')
-const cors = require('cors')
-const connectDB = require("./db/connect");
-const bodyParser = require('body-parser')
-const bcrypt = require('bcrypt')
-const nodemailer = require("nodemailer");
-const jwt = require('jsonwebtoken')
-const { logger } = require('./middleware/logEvents');
-const ImagesDescriptionMondel = require('./model/ImageDescription')
-const HealthFacilityMondel =require('./model/HealthFacilityinfo')
-const SignupFormBlog =require('./model/SignupForm')
-const session = require('express-session')
-const ImagesMondel = require('./model/imageDetails')
-const Blog = require('./model/Blog')
-const User = require('./model/User')
-const BlogUser = require('./model/BlogUser')
-const Blogcomment = require('./model/Blogcomment')
-const cookieParser = require("cookie-parser");
-const FileEntry = require('./model/FileEntry')
-const Log = require('./model/Log')
-const Form = require('./model/Form')
-const NewsFeedMondel = require('./model/NewsFeedMondel')
-const EVENTSMondel = require('./model/Events')
-const RepDeseaseMondel = require('./model/RepDesease')
-const MongoDBStore = require('connect-mongodb-session')(session);
-const MongoStore = require("connect-mongo");
-const emailRoutes = require("./routes/emailRoutes");
+/*****************************************************
+ * CORE MODULES & CONFIGURATION
+ *****************************************************/
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
 const dotenv = require("dotenv");
-const helmet = require('helmet');
-require('dotenv').config()
-const fs = require("fs"); 
-//require('dotenv').config()
-const Component = require('./model/Component')
-const CoRegistrationMondel = require('./model/CoRegistration')
-const multer = require('multer')
-const crypto = require('crypto');
-const QRCode = require('qrcode');
-const { createServer } = require('node:http');
-const { Server } = require('socket.io');
-const rateLimit = require('express-rate-limit'); // optional but recommendedcd..
-const port = process.env.PORT || 3000;
- 
-const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const ImageKit = require("imagekit"); 
-const { v4: uuidv4 } = require("uuid");
-const streamifier = require("streamifier");
+const path = require("path");
+const fs = require("fs");
+const crypto = require("crypto");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
+const bodyParser = require("body-parser");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const session = require("express-session");
+const multer = require("multer");
+const QRCode = require("qrcode");
+const nodemailer = require("nodemailer");
 
-const JWT_SECRET =process.env.JWT_SECRET;
-
-
-
-
-
-
-const path= require('path');
-const { connect } = require('node:http2');
-const SECRET_KEY = 'super-secret-key'
 dotenv.config();
 
-// const corsOptions = {
-//   origin: "*",
-//   credentials: true, //access-control-allow-credentials:true
-//   optionSuccessStatus: 200,
-// };
+/*****************************************************
+ * SERVER & SOCKET
+ *****************************************************/
+const { createServer } = require("node:http");
+const { Server } = require("socket.io");
 
+/*****************************************************
+ * DATABASE & SESSION STORES
+ *****************************************************/
+const MongoStore = require("connect-mongo");
+const MongoDBStore = require("connect-mongodb-session")(session);
+
+/*****************************************************
+ * CLOUD & MEDIA SERVICES
+ *****************************************************/
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const ImageKit = require("imagekit");
+const streamifier = require("streamifier");
+const { v4: uuidv4 } = require("uuid");
+
+/*****************************************************
+ * CUSTOM UTILITIES & MIDDLEWARE
+ *****************************************************/
+const connectDB = require("./db/connect");
+const { logger } = require("./middleware/logEvents");
+
+/*****************************************************
+ * MODELS
+ *****************************************************/
+const ImagesDescriptionMondel = require("./model/ImageDescription");
+const HealthFacilityMondel = require("./model/HealthFacilityinfo");
+const SignupFormBlog = require("./model/SignupForm");
+const ImagesMondel = require("./model/imageDetails");
+const Blog = require("./model/Blog");
+const User = require("./model/User");
+const BlogUser = require("./model/BlogUser");
+const Blogcomment = require("./model/Blogcomment");
+const FileEntry = require("./model/FileEntry");
+const Log = require("./model/Log");
+const Form = require("./model/Form");
+const NewsFeedMondel = require("./model/NewsFeedMondel");
+const EVENTSMondel = require("./model/Events");
+const RepDeseaseMondel = require("./model/RepDesease");
+const Component = require("./model/Component");
+const CoRegistrationMondel = require("./model/CoRegistration");
+
+/*****************************************************
+ * ROUTES
+ *****************************************************/
+const emailRoutes = require("./routes/emailRoutes");
+
+/*****************************************************
+ * ENV CONSTANTS
+ *****************************************************/
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET;
+const SECRET_KEY = JWT_SECRET;
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "LabResult");
+
+/*****************************************************
+ * EXPRESS APP INITIALIZATION
+ *****************************************************/
 const app = express();
+const server = createServer(app);
+const io = new Server(server);
 
+/*****************************************************
+ * REQUEST TIMEOUT CONFIG
+ *****************************************************/
 app.use((req, res, next) => {
   req.setTimeout(600000); // 10 minutes
   res.setTimeout(600000);
   next();
 });
-// app.use(cors())
-//Enable CORS for frontend
-// app.use(cors({
-//   origin: 'http://localhost:3000', // React app URL
-//   methods: ['GET', 'POST'],
-// }));
-app.use(logger);
-app.use(express.json({limit:'500mb'}));
-app.use(cookieParser());
-// ✅ CORS fix for credentials
-app.use(cors({
-  origin: [ "https://aacdmc.gov.et", "*" ,'http://localhost:5173'],  // your React dev server
-  credentials: true                 // allow cookies/sessions
-}));
 
+/*****************************************************
+ * GLOBAL MIDDLEWARE
+ *****************************************************/
+app.use(logger);
+app.use(express.json());
+app.use(cookieParser());
+app.use(bodyParser.json());
+
+/*****************************************************
+ * CORS CONFIGURATION
+ *****************************************************/
+app.use(
+  cors({
+    origin: [
+      "https://aacdmc.gov.et",
+      "https://www.aacdmc.gov.et",
+      "*",
+      "http://localhost:5173",
+      "https://server-qub9.onrender.com",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
+
+/*****************************************************
+ * AUTH MIDDLEWARE
+ *****************************************************/
 function requireLogin(req, res, next) {
   if (req.session && req.session.user) return next();
   return res.status(401).json({ message: "Login required" });
 }
-//app.use(bodyParser.urlencoded({limit:'50mb', extended: true}))
-const server = createServer(app);
-const io = new Server(server);
 
-
-
+/*****************************************************
+ * STATIC FILE SERVING
+ *****************************************************/
 app.use("/files", express.static("files"));
-app.use("/image",express.static("image"));
-app.use("/CardBottum",express.static("CardBottum"));
-// app.use("/Cards",express.static("Cards"));
+app.use("/image", express.static("image"));
+app.use("/CardBottum", express.static("CardBottum"));
 app.use("/Images", express.static("Images"));
 app.use("/ReserchPaper", express.static("ReserchPaper"));
 app.use("/ReserchProposal", express.static("ReserchProposal"));
@@ -113,7 +148,6 @@ app.use("/FinalReserchPaper", express.static("FinalReserchPaper"));
 app.use("/RiskA", express.static("RiskA"));
 app.use("/Bulletin", express.static("Bulletin"));
 app.use("/OutbreakInvestigation", express.static("OutbreakInvestigation"));
-
 app.use("/ActiveSearch", express.static("ActiveSearch"));
 app.use("/NOPV", express.static("NOPV"));
 app.use("/VRAM", express.static("VRAM"));
@@ -126,59 +160,58 @@ app.use("/RiskComm", express.static("RiskComm"));
 app.use("/Guidlines", express.static("Guidlines"));
 app.use("/IRBPolicy", express.static("IRBPolicy"));
 app.use("/capacityB", express.static("capacityB"));
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'LabResult');
+app.use("/Cards", express.static(path.join(__dirname, "Cards")));
+app.use(express.static("BanerImage"));
 
-app.use('/Cards', express.static(path.join(__dirname, 'Cards')));
-
- app.use(express.static('BanerImage'));
-// --------------------
-// Global error handlers
-// --------------------
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
-});
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-  // NOTE: in production you may want to exit process after logging:
-  // process.exit(1);
+/*****************************************************
+ * DATABASE CONNECTION
+ *****************************************************/
+mongoose.connect(process.env.MONGO_URL, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
 });
 
-// app.use('/BanerImage', express.static(path.join(__dirname, 'BanerImage')));
-// app.use("/BanerImage", express.static(path.join(__dirname, '../../httpdocs/BanerImage/'))); // Create upload folder if not exists 
-// const uploadFolder = "./BanerImage"; 
-// if (!fs.existsSync(uploadFolder)) 
-//   { fs.mkdirSync(uploadFolder); }
-// //app.use(express.json())
-//app.use(express.urlencoded({extended:true}))
-app.use(bodyParser.json())
-
-//const URI = ("mongodb+srv://AACDMC:Alem%400913629813;@cluster0.en5lj.mongodb.net//image?retryWrites=true&w=majority&appName=Cluster0")
-// console.log(process.env.MONGO_URL)
-  //const MONGO_URL = process.env.MONGO_URL ;
- mongoose.connect(process.env.MONGO_URL , { useNewUrlParser: true, useUnifiedTopology: true })
- const store = MongoStore.create({
+const store = MongoStore.create({
   mongoUrl: process.env.MONGO_URL,
   collectionName: "sessions",
 });
 
-// ✅ Express session middleware (no localStorage used)
-// app.use(session({
-//   secret: JWT_SECRET,
-//   resave: false,
-//   saveUninitialized: false,
-// }));
-// const session = require("express-session");
+/*****************************************************
+ * GLOBAL ERROR HANDLING
+ *****************************************************/
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection:", reason);
+});
 
-app.use(session({
-  secret: JWT_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    secure: false,  // true only if HTTPS
-    sameSite: "lax"
-  }
-}));
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
+
+
+
+
+
+/*****************************************************
+ *  ---------- SESSION CONFIG ----------
+ *****************************************************/
+app.use(
+  session({
+    name: "token",
+    secret:  JWT_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: true,          // HTTPS on Render, required
+      sameSite: "none",      // allow cross-site cookies
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    },
+    store: MongoStore.create({
+      mongoUrl: process.env.MONGO_URL,
+    }),
+  })
+);
+
 //mongoose.connect("")
 // async function Connect() {
 //   try{
@@ -190,8 +223,10 @@ app.use(session({
 // }
 // connect()
 
+/*****************************************************
+ *   ==== AUTH MIDDLEWARE ====
+ *****************************************************/
 
-// ==== AUTH MIDDLEWARE ====
 const verifyToken = (req, res, next) => {
   const token = req.cookies.token;
   if (!token) return res.status(401).json({ message: "No token" });
@@ -203,9 +238,11 @@ const verifyToken = (req, res, next) => {
     next();
   });
 };
-////////////////////////////------------Authontication ------//////////////////
 
 
+/*****************************************************
+ *   ==== AITHONTICATION ====
+ *****************************************************/
 
   require("./model/userDetails");
   const User_Login = mongoose.model("UserInfo");
@@ -310,8 +347,11 @@ const verifyToken = (req, res, next) => {
     }
   });
 
-  ////////////////////////////////////////AACDMC Log History Handling////////////////////
-  // === Log function ===
+ 
+  /*****************************************************
+ *   ==== LOG HISTORY HANDLING ====
+ *****************************************************/
+
 async function addLog(action, details) {
   try {
     // Save in MongoDB
@@ -386,8 +426,9 @@ app.get("/api/logs/file", (req, res) => {
   });
 });
 
-  /////////////////////////////////////////////////formula for date for reserch recieved///
-  // Function to add working days (skipping Saturday & Sunday)
+    /*****************************************************
+ *   ==== RESERCH RECIEVED CALCULATION FORMULA====Function to add working days (skipping Saturday & Sunday)
+ *****************************************************/
 function addWorkingDays(startDate, daysToAdd) {
   let currentDate = new Date(startDate);
   let addedDays = 0;
@@ -411,8 +452,10 @@ app.post("/submit-form", (req, res) => {
   });
 });
   
-//  Student login and sighen up given by IRB//////////////////////////////////////////////
 
+  /*****************************************************
+ *   ==== IRB STUDENT REGISTRATION ====
+ *****************************************************/
   require("./model/StudentLogin");
   const StudentLogin = mongoose.model("StudentInfo");
 
@@ -559,7 +602,9 @@ app.get("/", (req,res) => {
 //     .catch(err => console.log(err))  
 //     })
 
-    //////////////////////////////////fetching from register collection//////////
+   /*****************************************************
+ *   ==== FETCHING FOR STUDENT IN RESERCH ====
+ *****************************************************/
 app.get('/fetching', async(req, res) =>{
     
     //ResearchMondel.find()
@@ -590,22 +635,31 @@ app.get('/fetching', async(req, res) =>{
     //.catch(err => console.log(err))  
     ///passswpred---------invg pgzi yrbs qntc----
     })
-    ///////////////fetchin newsheadline////////////
+ 
+  /*****************************************************
+ *   ==== FETCHING FOR HEADLINE NEWS ====
+ *****************************************************/
     app.get('/NewsHeadline',(req, res) =>{
       NewsFeedMondel.find()
       .then(users => res.json(users))
       .catch(err => console.log(err))  
       })
-      ///////////////fetchin filter////////////
+
+
+ /*****************************************************
+ *   ==== FETCHING FOR MEASELES ====
+ *****************************************************/
     app.get('/Filter',(req, res) =>{
       const { q } = req.query;
       const Measeles = MeaselesMondel.find()
       .then(users => res.json(users))
       .catch(err => console.log(err))  
       })
-      ///////////////delet newsheadline///////////
 
-      /////////////////////////////////////////////////////
+
+   /*****************************************************
+ *   ==== DELET NEWS HEADLINE ====
+ *****************************************************/
     app.delete('/deletNewes/:id',(req, res) =>{
       const id = req.params.id;
       NewsFeedMondel.findByIdAndDelete({_id: id})
@@ -613,23 +667,30 @@ app.get('/fetching', async(req, res) =>{
       .catch(err => res.json(err))
       })
 
-      ///////////////delet EVENTS///////////
-
-      /////////////////////////////////////////////////////
+ /*****************************************************
+ *   ==== FDELET EVENTS ====
+ *****************************************************/
     app.delete('/deletEvent/:id',(req, res) =>{
       const id = req.params.id;
       EVENTSMondel.findByIdAndDelete({_id: id})
       .then(res => res.json(res))
       .catch(err => res.json(err))
       })
- ////////////////////////Delet Banner/////////////////////////////
+
+/*****************************************************
+ *   ==== DELET BANNER ====
+ *****************************************************/
  app.delete('/deletBaner/:id',(req, res) =>{
   const id = req.params.id;
   ImagesMondel.findByIdAndDelete({_id: id})
   .then(res => res.json(res))
   .catch(err => res.json(err))
   })
-///////////////////////Delet Health Facility//////////////////////////////
+
+  
+   /*****************************************************
+ *   ==== DELET HEALTH FACILITY ====
+ *****************************************************/
 app.delete('/deletHF/:id',(req, res) =>{
   const id = req.params.id;
   HealthFacilityMondel.findByIdAndDelete({_id: id})
@@ -685,7 +746,10 @@ app.get("/", async (req, res) => {
   res.send("Success!!!!!!");
 });*/
 
-      ////////////////////news feed///////////////////////
+ 
+ /*****************************************************
+ *   ==== CREATE NEWS HEADLINE ====
+ *****************************************************/
 
 app.post("/NewsFeed" ,(req, res) => {
   const{News1,News2,News3} = req.body
@@ -743,7 +807,9 @@ app.post("/NewsFeed" ,(req, res) => {
 
 })
 
-/////////////////////////////////////////////review student proposal////////////////////////////////////////
+ /*****************************************************
+ *   ==== REVIEW STUDENT PROPOSAL ====
+ *****************************************************/
 app.get('/get/:id', (req, res) => {
   const id = req.params.id
   ResearchMondel.findById({_id: id})
@@ -761,7 +827,9 @@ app.put('/update/:id', (req, res) => {
   .catch(err => res.json(err))
 })
 
-//////////////////////////////////////////review Dowenload metadata////////////////////////////////////////HFUpdate
+ /*****************************************************
+ *   ==== REVIEW DOWENLOAD METADATA ====
+ *****************************************************/
 app.get('/Acces/:id', (req, res) => {
   const id = req.params.id
   RegisterMondel.findById({_id: id})
@@ -779,7 +847,9 @@ app.put('/updateDowenload/:id', (req, res) => {
   .catch(err => res.json(err))
 })
 
-//////////////////////////////////////////Update Health Facility Name////////////////////////////////////////HFUpdate
+ /*****************************************************
+ *   ==== UPDATE HEALTH FACILITY ====
+ *****************************************************/
 app.get('/HFUpdate/:id', (req, res) => {
   const id = req.params.id
   HealthFacilityMondel.findById({_id: id})
@@ -795,7 +865,9 @@ app.put('/HFUpdate/:id', (req, res) => {
   .catch(err => res.json(err))
 })
 
-////////////// fetching with selection option /////////////
+ /*****************************************************
+ *   ==== FILTER HEALTH FACILITY ====
+ *****************************************************/
 
 app.get('/Facility-info',(req, res) =>{
     
@@ -1534,7 +1606,9 @@ app.get("/get-imageID", async (req, res) => {
     res.json({ status: error });
   }
 });
-////////////////////////////Image for Resolve/////////////
+ /*****************************************************
+ *   ==== UPLOAD IMAGE FOR RESOLVE ====
+ *****************************************************/
 const ResolveImage = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -1586,7 +1660,9 @@ app.get("/get-ResolveImage", async (req, res) => {
     res.json({ status: error });
   }
 });
-///////////////////////News for Resolve///////////
+ /*****************************************************
+ *   ==== UPLOAD NEWS FOR RESOLVE ====
+ *****************************************************/
 
 const ResolveNews = multer.diskStorage({
   // destination: './public/uploads',
@@ -1662,7 +1738,11 @@ res.json(results)
   //.catch(err => console.log(err))  
   ///passswpred---------invg pgzi yrbs qntc----
   })
-////////////////////////////GIF in bottum cared/////////// 
+
+  
+   /*****************************************************
+ *   ==== GIF IMAGE FOR BOTTUM NEWS ====
+ *****************************************************/
 const GIF = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -1722,7 +1802,11 @@ app.get('/getGIF', async (req, res) => {
     res.status(500).json({ error: 'Could not retrieve posts' });
   }
 });
-////////////////////////////////////Abot Us leaders Photo///////////
+
+
+ /*****************************************************
+ *   ==== ABOTUS LEADERS PHOTO UPLOAD ====
+ *****************************************************/
 const AbotUs = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -2066,6 +2150,9 @@ app.get("/", (req, res) => {
 });
 
 // ✅ Register API (POST)
+ /*****************************************************
+ *   ==== REGISTER API FOR BLOGING IN RESERCH ====
+ *****************************************************/
 app.post("/api/users/register", async (req, res) => {
   try {
     const { name, fatherName, email, phone, birthday, gender, password } = req.body;
@@ -2223,7 +2310,9 @@ app.get("/", (req, res) => {
 });
 ///////////////////////////multer attached file for email/////////////
 
-// Multer storage
+ /*****************************************************
+ *   ==== EMAIL FOR RESERCH UNIT====
+ *****************************************************/
 const Esend = multer.diskStorage({
   filename: function (req, file, cb) {
     cb(null, file.fieldname + "-" + Date.now() + path.extname(file.originalname));
@@ -2315,7 +2404,7 @@ app.post("/Esend", attached.single("file"), async (req, res) => {
 app.get('/get-Esend', async(req, res) =>{
     
   //ResearchMondel.find()
-  const allUser = await EsendMondel.find({}).sort({createdAt: -1});
+  const allUser = await EsendModel.find({}).sort({createdAt: -1});
 const page = parseInt(req.query.page)
 const limit = parseInt(req.query.limit)
 
@@ -2388,7 +2477,9 @@ app.get('/api/search', async (req, res) => {
 });
 
 
-///////////////////////////contact us  email/////////////
+ /*****************************************************
+ *   ==== CONTACT US EMAIL ====
+ *****************************************************/
 const Emailstorages = multer.diskStorage({
   destination:function(req, file, cb){
       cb(null,('./EmailDoc'));
@@ -2442,7 +2533,9 @@ app.post("/ContactUs", attacheds.single("documents"), async(req, res) =>{
 }); 
 
 
-///////////////////////////Rummer  email/////////////
+ /*****************************************************
+ *   ==== RUMER EMAIL ====
+ *****************************************************/
 const EmailRummer = multer.diskStorage({
   destination:function(req, file, cb){
       cb(null,('./EmailRummer'));
@@ -2670,7 +2763,9 @@ app.post("/SighnupIRB", async (req, res) => {
 }); 
 
 
-////////////////////////////////////Uploading RTDS///////////
+ /*****************************************************
+ *   ==== UPLOADING ADDIS ABABA DATAMANGEMENT CENTER RTD  ====
+ *****************************************************/
 const storage = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -2840,7 +2935,12 @@ app.post("/upload", upload.array("files", 10), async (req, res) => {
 
 //multer------------------------------------------------------------
 //const multer = require("multer");
-////////////////////////////////////DataCollectionP///////////
+
+
+
+ /*****************************************************
+ *   ==== UPLOADING DATA COLLECTION PROGRESS ====
+ *****************************************************/
 // Multer storage config
 const DataCollectionP = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -3078,8 +3178,9 @@ app.post("/DataCollectionC", DataCollectionCupload.array("files", 10), async (re
 //   }
 // });
 
-///////////////////////////////////////////////the new request//////////
-////////////////////////////////////Uploading RTDS///////////
+ /*****************************************************
+ *   ==== UPLOADING FILE REQUEST  ====
+ *****************************************************/
 const Request = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -3204,8 +3305,9 @@ app.get('/get-Rechfiles',(req, res) =>{
     .catch(err => console.log(err))
     })
 
-     //multer------------------------------------------------------------
-//const multer = require("multer");
+ /*****************************************************
+ *   ==== UPLOADING MEASELES FILE ====
+ *****************************************************/
 
 const MeaslesM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -4201,8 +4303,9 @@ app.get("/", async (req, res) => {
 });
 
 
-//multer------------------------------------------------------------
-//const multer = require("multer");
+ /*****************************************************
+ *   ==== UPLOADING MALARIYA FILE ====
+ *****************************************************/
 
 const MalariaM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -5135,8 +5238,9 @@ app.get("/", async (req, res) => {
   res.send("Success!!!!!!");
 });
 
-//multer------------------------------------------------------------
-//const multer = require("multer");
+ /*****************************************************
+ *   ==== UPLOADING RELAPSING FEVER FILE ====
+ *****************************************************/
 
 const RelapsingFeverM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -5924,8 +6028,9 @@ app.get("/", async (req, res) => {
   res.send("Success!!!!!!");
 });
 
-//multer------------------------------------------------------------
-//const multer = require("multer");
+ /*****************************************************
+ *   ==== UPLOADING AFI FILE ====
+ *****************************************************/
 
 const AEFIM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -6728,8 +6833,9 @@ app.get("/", async (req, res) => {
 });
 
 
-//multer------------------------------------------------------------
-//const multer = require("multer");
+ /*****************************************************
+ *   ==== UPLOADING PRENATAL FILE ====
+ *****************************************************/
 
 const PrenatalDeathM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -7635,8 +7741,11 @@ app.get("/", async (req, res) => {
 app.get("/", async (req, res) => {
   res.send("Success!!!!!!");
 });
-//multer------------------------------------------------------------
-//const multer = require("multer");
+
+
+ /*****************************************************
+ *   ==== UPLOADING FISTULA FILE ====
+ *****************************************************/
 
 const FistulaM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -8442,8 +8551,11 @@ app.get("/", async (req, res) => {
   res.send("Success!!!!!!");
 });
 ///////////////////////////////////////backend Rabis//////////////////////////////////////////////////////
-//multer------------------------------------------------------------
-//const multer = require("multer");
+
+
+ /*****************************************************
+ *   ==== UPLOADING RABIS FILE ====
+ *****************************************************/
 
 const RabiesM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -9321,8 +9433,11 @@ app.get("/", async (req, res) => {
 
 /////////////////////////////////////////////////////////end/////////////////////////////////////////////
 
-//multer------------------------------------------------------------
-//const multer = require("multer");
+
+
+ /*****************************************************
+ *   ==== UPLOADING YELLOW FEVER FILE ====
+ *****************************************************/
 
 const YellowFeverM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -10081,8 +10196,11 @@ app.get("/Gete-SingleYellowFeverReferred", async (req, res) => {
 app.get("/", async (req, res) => {
   res.send("Success!!!!!!");
 });
-//multer------------------------------------------------------------
-//const multer = require("multer");
+
+
+ /*****************************************************
+ *   ==== UPLOADING MATERNAL FILE ====
+ *****************************************************/
 
 const MaternalDeathM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -11093,8 +11211,11 @@ app.get("/", async (req, res) => {
   res.send("Success!!!!!!");
 });
 
-//multer------------------------------------------------------------
-//const multer = require("multer");
+
+
+ /*****************************************************
+ *   ==== UPLOADING CHOLERA FILE ====
+ *****************************************************/
 
 const CholerasM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -13057,7 +13178,9 @@ app.get("/", async (req, res) => {
 
 //multer------------------------------------------------------------
 //const multer = require("multer");
-////////////////////////////////////DataCollectionP///////////
+ /*****************************************************
+ *   ==== DATA COLLECTION PROGRESS IN TO CLOUDINARY ====
+ *****************************************************/
 const ResearchM = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -13554,8 +13677,11 @@ app.get("/Gete-Notaccessible", async (req, res) => {
             console.log(error);
           }
         });
-//multer------------------------------------------------------------
-//const multer = require("multer");
+
+        
+ /*****************************************************
+ *   ==== UPLOADING MENINGITSM FILE ====
+ *****************************************************/
 
 const MeningitsM = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -14583,8 +14709,12 @@ app.get("/get-CoRegistration", async (req, res) => {
 
 // })
 //////IRBUpload/////////////////////////////////////////////////////////
- //multer------------------------------------------------------------
-//const multer = require("multer");
+ 
+ 
+
+  /*****************************************************
+ *   ==== FINAL RESERCH PAPER SUBMITION ====
+ *****************************************************/
 
 const IRB = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -14728,9 +14858,11 @@ const Colledge = multer.diskStorage({
             console.log(error);
           }
         });
-//////bulletin uploaded/////////////////////////////////////////////////////////
- //multer------------------------------------------------------------
-//const multer = require("multer");"./FinalReserchPaper"
+
+
+ /*****************************************************
+ *   ==== BULETIN UPLOADING ====
+ *****************************************************/
 const Bulletin = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -14960,9 +15092,11 @@ function generateCode(len = 6) {
   return crypto.randomBytes(Math.ceil(len / 2)).toString('hex').slice(0, len);
 }
 
-// --- API Routes ---
 
-// 1️⃣ Create new record and generate code
+
+ /*****************************************************
+ *   ==== LABORATORY RESULT SUBMITION AND GENERATING CODE ====
+ *****************************************************/
 app.post('/api/create', async (req, res) => {
   try {
     const { name, phone, Professional, sex ,HFName, HFTName} = req.body;
@@ -15457,7 +15591,10 @@ app.get("/get-WeeklyR", async (req, res) => {
 
 
 
-// --- DOWNLOAD BY CODE ---
+
+/*****************************************************
+ *   ==== DOWNLOAD BY CODE  ;LABORATORY RESULT====
+ *****************************************************/
 app.get('/download/:code', async (req, res) => {
 try {
 const code = req.params.code;
@@ -16472,19 +16609,17 @@ app.post("/signup", async (req, res) => {
     res.json({ message: "Signup success", user: user.name });
 });
 
-// Login
 // app.post("/login", async (req, res) => {
-//     const user = await User.findOne({ email: req.body.email });
+//   const user = await User.findOne({ email: req.body.email });
+//   if (!user) return res.status(400).json({ message: "Invalid email" });
 
-//     if (!user) return res.status(400).json({ message: "Invalid email" });
+//   const ok = await bcrypt.compare(req.body.password, user.password);
+//   if (!ok) return res.status(400).json({ message: "Invalid password" });
 
-//     const ok = await bcrypt.compare(req.body.password, user.password);
-//     if (!ok) return res.status(400).json({ message: "Invalid password" });
+//   req.session.userId = user._id;
+//   req.session.userName = user.name;
 
-//     req.session.userId = user._id;
-//     req.session.userName = user.name;
-
-//     res.json({ message: "Logged in", user: user.name });
+//   res.json({ message: "Logged in", user: user.name });
 // });
 
 app.post("/login", async (req, res) => {
@@ -16499,11 +16634,19 @@ app.post("/login", async (req, res) => {
     req.session.userId = user._id;
     req.session.userName = user.name;
 
-    res.cookie("token", "loggedin", {
+    // res.cookie("token", "loggedin", {
+    //   httpOnly: true,
+    //   secure: false,  // use true in HTTPS
+    //   sameSite: "NON"
+    // });
+      const token = user._id.toString(); // or JWT if you use one
+
+    res.cookie("token", token, {
       httpOnly: true,
-      secure: false,  // use true in HTTPS
-      sameSite: "NON"
+      secure: true,      // Render uses https so MUST be true
+      sameSite: "none",  // required for cross-site cookies
     });
+
 
     res.json({ message: "Login successful", name: user.name });
 
@@ -18302,6 +18445,10 @@ app.get("/get-IRBPolicy", async (req, res) => {
 //   api_secret: process.env.CLOUDINARY_API_SECRET,
 // });
 
+
+/*****************************************************
+ *   ==== UPLOAD FOR CAPACITY BUILDING ====
+ *****************************************************/
 const capacityBstorage = multer.diskStorage({
   // destination: './public/uploads',
   filename: function (req, file, cb) {
@@ -18445,6 +18592,9 @@ app.get('/EVENTSGet',(req, res) =>{
 }).catch(err => res.json(err))
 
 })*/
+/*****************************************************
+ * SERVER START
+ *****************************************************/
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
   res.status(500).json({ error: "Internal server error", details: err.message });
@@ -18457,7 +18607,7 @@ app.get('*', (req, res) => {
 io.on('connection', (socket) => {
   console.log('a user connected');
 });
-const PORT = process.env.PORT || 3000;
+//  PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("server is runing")
 })
