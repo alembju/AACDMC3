@@ -271,26 +271,94 @@ const verifyToken = (req, res, next) => {
   }); 
 
 
+  // app.post("/login-user", async (req, res) => {
+  //   const { email, password } = req.body;
+  
+  //   const user = await User_Login.findOne({ email });
+  //   if (!user) {
+  //     return res.json({ error: "User Not found" });
+  //   }
+  //   if (await bcrypt.compare(password, user.password)) {
+  //     const token = jwt.sign({ email: user.email }, JWT_SECRET, {
+  //       expiresIn: "15m",
+  //     });
+  
+  //     if (res.status(201)) {
+  //       return res.json({ status: "ok", data: token });
+  //     } else {
+  //       return res.json({ error: "error" });
+  //     }
+  //   }
+  //   res.json({ status: "error", error: "InvAlid Password" });
+  // });
+
   app.post("/login-user", async (req, res) => {
+  try {
     const { email, password } = req.body;
-  
+
     const user = await User_Login.findOne({ email });
+
     if (!user) {
-      return res.json({ error: "User Not found" });
-    }
-    if (await bcrypt.compare(password, user.password)) {
-      const token = jwt.sign({ email: user.email }, JWT_SECRET, {
-        expiresIn: "15m",
+      return res.status(404).json({
+        status: "error",
+        error: "User Not found",
       });
-  
-      if (res.status(201)) {
-        return res.json({ status: "ok", data: token });
-      } else {
-        return res.json({ error: "error" });
-      }
     }
-    res.json({ status: "error", error: "InvAlid Password" });
-  });
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatch) {
+      return res.status(401).json({
+        status: "error",
+        error: "Invalid Password",
+      });
+    }
+
+    // Create session
+    req.session.user = {
+      id: user._id,
+      email: user.email,
+      userType: user.userType,
+      fname: user.fname,
+      lname: user.lname,
+    };
+
+    // JWT token if you still want to use JWT
+    const token = jwt.sign(
+      {
+        id: user._id,
+        email: user.email,
+        userType: user.userType,
+        fname: user.fname,
+        lname: user.lname,
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "15m",
+      }
+    );
+
+    return res.status(200).json({
+      status: "ok",
+      data: token,
+      user: {
+        id: user._id,
+        email: user.email,
+        userType: user.userType,
+        fname: user.fname,
+        lname: user.lname,
+      },
+    });
+
+  } catch (error) {
+    console.error("Login error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      error: "Server error",
+    });
+  }
+});
   
   app.post("/userData", async (req, res) => {
     const { token } = req.body;
@@ -346,6 +414,38 @@ const verifyToken = (req, res, next) => {
       console.log(error);
     }
   });
+
+
+
+  app.get("/student/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const student = await User_Login.findById(id).select(
+      "-password -secretKey"
+    );
+
+    if (!student) {
+      return res.status(404).json({
+        status: "error",
+        message: "Student not found",
+      });
+    }
+
+    res.status(200).json({
+      status: "ok",
+      data: student,
+    });
+
+  } catch (error) {
+    console.error("Error getting student:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+    });
+  }
+});
 
  
   /*****************************************************
@@ -2431,6 +2531,39 @@ res.json(results)
   //.catch(err => console.log(err))  
   ///passswpred---------invg pgzi yrbs qntc----
   })
+
+  app.get("/Esend/:id", async (req, res) => {
+  try {
+
+    const { id } = req.params;
+
+    const result = await EsendModel.find({
+      studentId: id
+    });
+
+    if (!result || result.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "No confirmation information found"
+      });
+    }
+
+    res.json({
+      status: "ok",
+      data: result
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Server error"
+    });
+
+  }
+});
 //////Homepage SearchPage/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");
