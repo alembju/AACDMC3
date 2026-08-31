@@ -88,6 +88,15 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server);
 
+
+/////////////must be open for online//////////////////
+
+app.get("*", (req, res) => {
+  res.sendFile(
+    path.join(__dirname, "..", "client", "index.html")
+  );
+});
+
 /*****************************************************
  * REQUEST TIMEOUT CONFIG
  *****************************************************/
@@ -104,6 +113,7 @@ app.use(logger);
 app.use(express.json());
 app.use(cookieParser());
 app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: true }));
 
 /*****************************************************
  * CORS CONFIGURATION
@@ -111,16 +121,22 @@ app.use(bodyParser.json());
 app.use(
   cors({
     origin: [
+      "http://localhost:5173",
       "https://aacdmc.gov.et",
       "https://www.aacdmc.gov.et",
       "*",
-      "http://localhost:5173",
       "https://server-qub9.onrender.com",
     ],
+    allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
 );
+
+// Handle preflight requests
+app.options("*", cors());
+
+
 
 /*****************************************************
  * AUTH MIDDLEWARE
@@ -130,38 +146,175 @@ function requireLogin(req, res, next) {
   return res.status(401).json({ message: "Login required" });
 }
 
+// /*****************************************************
+//  * STATIC FILE SERVING
+//  *****************************************************/
+// app.use("/files", express.static("files"));
+// app.use("/image", express.static("image"));
+// app.use("/CardBottum", express.static("CardBottum"));
+// app.use("/Images", express.static("Images"));
+// app.use("/ReserchPaper", express.static("ReserchPaper"));
+// app.use("/ReserchProposal", express.static("ReserchProposal"));
+// app.use("/EmailDoc", express.static("EmailDoc"));
+// app.use("/MalariaStor", express.static("MalariaStor"));
+// app.use("/Polio", express.static("Polio"));
+// app.use("/Rabies", express.static("Rabies"));
+// app.use("/Meningits", express.static("Meningits"));
+// app.use("/FinalReserchPaper", express.static("FinalReserchPaper"));
+// app.use("/RiskA", express.static("RiskA"));
+// app.use("/Bulletin", express.static("Bulletin"));
+// app.use("/OutbreakInvestigation", express.static("OutbreakInvestigation"));
+// app.use("/ActiveSearch", express.static("ActiveSearch"));
+// app.use("/NOPV", express.static("NOPV"));
+// app.use("/VRAM", express.static("VRAM"));
+// app.use("/EPRP", express.static("EPRP"));
+// app.use("/IAR", express.static("IAR"));
+// app.use("/Publication", express.static("Publication"));
+// app.use("/ETraining", express.static("ETraining"));
+// app.use("/Suppervision", express.static("Suppervision"));
+// app.use("/RiskComm", express.static("RiskComm"));
+// app.use("/Guidlines", express.static("Guidlines"));
+// app.use("/IRBPolicy", express.static("IRBPolicy"));
+// app.use("/capacityB", express.static("capacityB"));
+// app.use("/Cards", express.static(path.join(__dirname, "Cards")));
+// app.use(express.static("BanerImage"));
+
 /*****************************************************
- * STATIC FILE SERVING
+ * EXPRESS APP INITIALIZATION
  *****************************************************/
-app.use("/files", express.static("files"));
-app.use("/image", express.static("image"));
-app.use("/CardBottum", express.static("CardBottum"));
-app.use("/Images", express.static("Images"));
-app.use("/ReserchPaper", express.static("ReserchPaper"));
-app.use("/ReserchProposal", express.static("ReserchProposal"));
-app.use("/EmailDoc", express.static("EmailDoc"));
-app.use("/MalariaStor", express.static("MalariaStor"));
-app.use("/Polio", express.static("Polio"));
-app.use("/Rabies", express.static("Rabies"));
-app.use("/Meningits", express.static("Meningits"));
-app.use("/FinalReserchPaper", express.static("FinalReserchPaper"));
-app.use("/RiskA", express.static("RiskA"));
-app.use("/Bulletin", express.static("Bulletin"));
-app.use("/OutbreakInvestigation", express.static("OutbreakInvestigation"));
-app.use("/ActiveSearch", express.static("ActiveSearch"));
-app.use("/NOPV", express.static("NOPV"));
-app.use("/VRAM", express.static("VRAM"));
-app.use("/EPRP", express.static("EPRP"));
-app.use("/IAR", express.static("IAR"));
-app.use("/Publication", express.static("Publication"));
-app.use("/ETraining", express.static("ETraining"));
-app.use("/Suppervision", express.static("Suppervision"));
-app.use("/RiskComm", express.static("RiskComm"));
-app.use("/Guidlines", express.static("Guidlines"));
-app.use("/IRBPolicy", express.static("IRBPolicy"));
-app.use("/capacityB", express.static("capacityB"));
+// const app = express();
+// const server = createServer(app);
+
+// const io = new Server(server, {
+//   cors: {
+//     origin: [
+//       "http://localhost:5173",
+//       "https://aacdmc.gov.et",
+//       "https://www.aacdmc.gov.et",
+//       "https://server-qub9.onrender.com",
+//     ],
+//     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+//     credentials: true,
+//   },
+// });
+
+// /*****************************************************
+//  * REQUEST TIMEOUT
+//  *****************************************************/
+// app.use((req, res, next) => {
+//   req.setTimeout(600000);
+//   res.setTimeout(600000);
+//   next();
+// });
+
+// /*****************************************************
+//  * GLOBAL MIDDLEWARE
+//  *****************************************************/
+// app.use(logger);
+
+// app.use(
+//   express.json({
+//     limit: "50mb",
+//   })
+// );
+
+// app.use(
+//   express.urlencoded({
+//     extended: true,
+//     limit: "50mb",
+//   })
+// );
+
+// app.use(cookieParser());
+
+// /*****************************************************
+//  * CORS
+//  *****************************************************/
+// const allowedOrigins = [
+//   "http://localhost:5173",
+//   "https://aacdmc.gov.et",
+//   "https://www.aacdmc.gov.et",
+//   "https://server-qub9.onrender.com",
+// ];
+
+// app.use(
+//   cors({
+//     origin: function (origin, callback) {
+
+//       // Allow requests without an Origin
+//       // such as Postman/server-to-server requests
+//       if (!origin) {
+//         return callback(null, true);
+//       }
+
+//       if (allowedOrigins.includes(origin)) {
+//         return callback(null, true);
+//       }
+
+//       console.log("Blocked CORS origin:", origin);
+
+//       return callback(
+//         new Error("Not allowed by CORS")
+//       );
+//     },
+
+//     methods: [
+//       "GET",
+//       "POST",
+//       "PUT",
+//       "DELETE",
+//       "OPTIONS",
+//     ],
+
+//     allowedHeaders: [
+//       "Content-Type",
+//       "Authorization",
+//     ],
+
+//     credentials: true,
+//   })
+// );
+
+// /*****************************************************
+//  * PREFLIGHT
+//  *****************************************************/
+// app.options("*", cors({
+//   origin: allowedOrigins,
+//   credentials: true,
+// }));
+
+/*****************************************************
+ * STATIC FILES
+ *****************************************************/
+app.use("/files", express.static(path.join(__dirname, "files")));
+app.use("/image", express.static(path.join(__dirname, "image")));
+app.use("/CardBottum", express.static(path.join(__dirname, "CardBottum")));
+app.use("/Images", express.static(path.join(__dirname, "Images")));
+app.use("/ReserchPaper", express.static(path.join(__dirname, "ReserchPaper")));
+app.use("/ReserchProposal", express.static(path.join(__dirname, "ReserchProposal")));
+app.use("/EmailDoc", express.static(path.join(__dirname, "EmailDoc")));
+app.use("/MalariaStor", express.static(path.join(__dirname, "MalariaStor")));
+app.use("/Polio", express.static(path.join(__dirname, "Polio")));
+app.use("/Rabies", express.static(path.join(__dirname, "Rabies")));
+app.use("/Meningits", express.static(path.join(__dirname, "Meningits")));
+app.use("/FinalReserchPaper", express.static(path.join(__dirname, "FinalReserchPaper")));
+app.use("/RiskA", express.static(path.join(__dirname, "RiskA")));
+app.use("/Bulletin", express.static(path.join(__dirname, "Bulletin")));
+app.use("/OutbreakInvestigation", express.static(path.join(__dirname, "OutbreakInvestigation")));
+app.use("/ActiveSearch", express.static(path.join(__dirname, "ActiveSearch")));
+app.use("/NOPV", express.static(path.join(__dirname, "NOPV")));
+app.use("/VRAM", express.static(path.join(__dirname, "VRAM")));
+app.use("/EPRP", express.static(path.join(__dirname, "EPRP")));
+app.use("/IAR", express.static(path.join(__dirname, "IAR")));
+app.use("/Publication", express.static(path.join(__dirname, "Publication")));
+app.use("/ETraining", express.static(path.join(__dirname, "ETraining")));
+app.use("/Suppervision", express.static(path.join(__dirname, "Suppervision")));
+app.use("/RiskComm", express.static(path.join(__dirname, "RiskComm")));
+app.use("/Guidlines", express.static(path.join(__dirname, "Guidlines")));
+app.use("/IRBPolicy", express.static(path.join(__dirname, "IRBPolicy")));
+app.use("/capacityB", express.static(path.join(__dirname, "capacityB")));
 app.use("/Cards", express.static(path.join(__dirname, "Cards")));
-app.use(express.static("BanerImage"));
+app.use(express.static(path.join(__dirname, "BanerImage")));
 
 /*****************************************************
  * DATABASE CONNECTION
@@ -271,6 +424,133 @@ const verifyToken = (req, res, next) => {
   }); 
 
 
+  ////User Student managment //////////////////////////////////
+  // =====================================================
+// GET ALL STUDENTS
+// =====================================================
+
+app.get("/manage-students", async (req, res) => {
+
+  try {
+
+    const students = await User_Login.find({
+      userType: "Student"
+    })
+    .select("-password")
+    .sort({
+      fname: 1,
+      lname: 1
+    });
+
+    res.status(200).json({
+      status: "ok",
+      data: students
+    });
+
+  } catch (error) {
+
+    console.error(
+      "Error fetching students:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch students."
+    });
+
+  }
+
+});
+
+// =====================================================
+// UPDATE STUDENT ACCOUNT STATUS
+// =====================================================
+
+app.put("/manage-student/:id/status", async (req, res) => {
+
+  try {
+
+    const { id } = req.params;
+    const { accountStatus } = req.body;
+
+    // ==========================================
+    // VALIDATE STATUS
+    // ==========================================
+
+    const allowedStatuses = [
+      "Active",
+      "Inactive",
+      "Disabled"
+    ];
+
+    if (!allowedStatuses.includes(accountStatus)) {
+
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid account status."
+      });
+
+    }
+
+    // ==========================================
+    // FIND STUDENT
+    // ==========================================
+
+    const student = await User_Login.findOne({
+      _id: id,
+      userType: "Student"
+    });
+
+    if (!student) {
+
+      return res.status(404).json({
+        status: "error",
+        message: "Student account not found."
+      });
+
+    }
+
+    // ==========================================
+    // UPDATE STATUS
+    // ==========================================
+
+    student.accountStatus = accountStatus;
+
+    await student.save();
+
+    // ==========================================
+    // RETURN WITHOUT PASSWORD
+    // ==========================================
+
+    const studentData = student.toObject();
+
+    delete studentData.password;
+
+    res.status(200).json({
+      status: "ok",
+      message: `Student account ${accountStatus}.`,
+      data: studentData
+    });
+
+  } catch (error) {
+
+    console.error(
+      "Error updating student status:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to update student account."
+    });
+
+  }
+
+});
+
+
+
   // app.post("/login-user", async (req, res) => {
   //   const { email, password } = req.body;
   
@@ -292,70 +572,165 @@ const verifyToken = (req, res, next) => {
   //   res.json({ status: "error", error: "InvAlid Password" });
   // });
 
-  app.post("/login-user", async (req, res) => {
+//   app.post("/login-user", async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     const user = await User_Login.findOne({ email });
+
+//     if (!user) {
+//       return res.status(404).json({
+//         status: "error",
+//         error: "User Not found",
+//       });
+//     }
+
+//     const passwordMatch = await bcrypt.compare(password, user.password);
+
+//     if (!passwordMatch) {
+//       return res.status(401).json({
+//         status: "error",
+//         error: "Invalid Password",
+//       });
+//     }
+
+//     // Create session
+//     req.session.user = {
+//       id: user._id,
+//       email: user.email,
+//       userType: user.userType,
+//       fname: user.fname,
+//       lname: user.lname,
+//     };
+
+//     // JWT token if you still want to use JWT
+//     const token = jwt.sign(
+//       {
+//         id: user._id.toString(),
+//         email: user.email,
+//         userType: user.userType,
+//         fname: user.fname,
+//         lname: user.lname,
+//       },
+//       JWT_SECRET,
+//       {
+//         expiresIn: "15m",
+//       }
+//     );
+
+//     return res.status(200).json({
+//       status: "ok",
+//       data: token,
+//       user: {
+//         id: user._id,
+//         email: user.email,
+//         userType: user.userType,
+//         fname: user.fname,
+//         lname: user.lname,
+//       },
+//     });
+
+//   } catch (error) {
+//     console.error("Login error:", error);
+
+//     return res.status(500).json({
+//       status: "error",
+//       error: "Server error",
+//     });
+//   }
+// });
+
+app.post("/login-user", async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Find user
     const user = await User_Login.findOne({ email });
 
     if (!user) {
       return res.status(404).json({
         status: "error",
-        error: "User Not found",
+        message: "User not found"
       });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password);
+    // =====================================================
+    // CHECK ACCOUNT STATUS
+    // =====================================================
+
+    if (
+      user.accountStatus === "Disabled"
+    ) {
+
+      return res.status(403).json({
+        status: "disabled",
+        message:
+          "Your account has been disabled. Please contact the administrator."
+      });
+
+    }
+
+
+    if (
+      user.accountStatus === "Inactive"
+    ) {
+
+      return res.status(403).json({
+        status: "inactive",
+        message:
+          "Your account is currently inactive. Please contact the administrator."
+      });
+
+    }
+
+    // Check password
+    const passwordMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
     if (!passwordMatch) {
       return res.status(401).json({
         status: "error",
-        error: "Invalid Password",
+        message: "Invalid password"
       });
     }
 
-    // Create session
-    req.session.user = {
-      id: user._id,
-      email: user.email,
-      userType: user.userType,
-      fname: user.fname,
-      lname: user.lname,
-    };
-
-    // JWT token if you still want to use JWT
+    // Create JWT
     const token = jwt.sign(
       {
-        id: user._id,
+        userId: user._id.toString(),
         email: user.email,
-        userType: user.userType,
-        fname: user.fname,
-        lname: user.lname,
+        userType: user.userType
       },
       JWT_SECRET,
       {
-        expiresIn: "15m",
+        expiresIn: "15m"
       }
     );
 
+    // Return complete user information
     return res.status(200).json({
       status: "ok",
+
       data: token,
+
       user: {
-        id: user._id,
-        email: user.email,
-        userType: user.userType,
+        _id: user._id,
         fname: user.fname,
         lname: user.lname,
-      },
+        email: user.email,
+        userType: user.userType
+      }
     });
 
   } catch (error) {
+
     console.error("Login error:", error);
 
     return res.status(500).json({
       status: "error",
-      error: "Server error",
+      message: "Server error during login"
     });
   }
 });
@@ -1035,30 +1410,234 @@ app.get('/EventHeadline',(req, res) =>{
 
     ////////////// fetching with selection option /////////////
     ///fetching file from reserch----------
+// app.get("/fetching-option", async (req, res) => {
+//   try {
+//     // You can filter by query, e.g. ?type=image
+//     const filter = {};
+//     if (req.query.PI) filter.PI = req.query.PI;
+
+//     // Aggregation to remove duplicates based on email
+//     const uniqueFiles = await ResearchMondel.aggregate([
+//       { $match: filter },
+//       { $sort: { createdAt: 1 } },
+//       {
+//         $group: {
+//           _id: "$PIemail",
+//           doc: { $first: "$$ROOT" }
+//         }
+//       },
+//       { $replaceRoot: { newRoot: "$doc" } }
+//     ]);
+
+//     res.json(uniqueFiles);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 app.get("/fetching-option", async (req, res) => {
   try {
-    // You can filter by query, e.g. ?type=image
-    const filter = {};
-    if (req.query.PI) filter.PI = req.query.PI;
 
-    // Aggregation to remove duplicates based on email
-    const uniqueFiles = await ResearchMondel.aggregate([
-      { $match: filter },
-      { $sort: { createdAt: 1 } },
+    // ============================================
+    // OPTIONAL PI FILTER
+    // ============================================
+
+    const filter = {};
+
+    if (req.query.PI) {
+      filter.PI = req.query.PI;
+    }
+
+
+    // ============================================
+    // GET ONE RECORD FOR EACH
+    // DIFFERENT PIemail + Title
+    // ============================================
+
+    const records = await ResearchMondel.aggregate([
+
+      // --------------------------------------------
+      // 1. APPLY FILTER
+      // --------------------------------------------
+
       {
-        $group: {
-          _id: "$PIemail",
-          doc: { $first: "$$ROOT" }
+        $match: filter
+      },
+
+
+      // --------------------------------------------
+      // 2. REMOVE EMPTY PI EMAIL / TITLE
+      // --------------------------------------------
+
+      {
+        $match: {
+          PIemail: {
+            $exists: true,
+            $nin: ["", null]
+          },
+
+          Title: {
+            $exists: true,
+            $nin: ["", null]
+          }
         }
       },
-      { $replaceRoot: { newRoot: "$doc" } }
+
+
+      // --------------------------------------------
+      // 3. GROUP BY PIemail + Title
+      // --------------------------------------------
+
+      {
+        $group: {
+
+          _id: {
+            PIemail: "$PIemail",
+            Title: "$Title"
+          },
+
+          // Keep the first complete ResearchMondel
+          // document for this combination
+
+          document: {
+            $first: "$$ROOT"
+          }
+
+        }
+      },
+
+
+      // --------------------------------------------
+      // 4. RETURN ORIGINAL DOCUMENT
+      // --------------------------------------------
+
+      {
+        $replaceRoot: {
+          newRoot: "$document"
+        }
+      },
+
+
+      // --------------------------------------------
+      // 5. SORT
+      // --------------------------------------------
+
+      {
+        $sort: {
+          PI: 1,
+          PIemail: 1,
+          Title: 1,
+          createdAt: -1
+        }
+      }
+
     ]);
 
-    res.json(uniqueFiles);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+
+    // ============================================
+    // RESPONSE
+    // ============================================
+
+    console.log(
+      "======================================"
+    );
+
+    console.log(
+      "Unique PI + Title records:",
+      records.length
+    );
+
+    console.log(
+      "======================================"
+    );
+
+
+    return res.status(200).json({
+
+      status: "ok",
+
+      count: records.length,
+
+      data: records
+
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "Fetching option error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: error.message
+    });
   }
 });
+// app.get("/fetching-option", async (req, res) => {
+//   try {
+
+//     const filter = {};
+
+//     if (req.query.PI) {
+//       filter.PI = req.query.PI;
+//     }
+
+//     const uniqueFiles = await ResearchMondel.aggregate([
+//       {
+//         $match: filter
+//       },
+
+//       {
+//         $sort: {
+//           createdAt: -1
+//         }
+//       },
+
+//       {
+//         $group: {
+//           _id: "$PIemail",
+
+//           doc: {
+//             $first: "$$FOOT"
+//           }
+//         }
+//       },
+
+//       {
+//         $replaceRoot: {
+//           newRoot: "$doc"
+//         }
+//       },
+
+//       {
+//         $project: {
+//         _id: 1,
+//         studentID: 1,
+//         PI: 1,
+//         PIemail: 1,
+//         email: 1,
+//         Title: 1
+//         }
+//       }
+//     ]);
+
+//     res.status(200).json(uniqueFiles);
+
+//   } catch (error) {
+
+//     console.error(
+//       "Fetching option error:",
+//       error
+//     );
+
+//     res.status(500).json({
+//       status: "error",
+//       message: error.message
+//     });
+//   }
+// });
 
     // app.get('/fetching-option',(req, res) =>{
     
@@ -2426,7 +3005,7 @@ const attached = multer({ storage: Esend });
 
 app.post("/Esend", attached.single("file"), async (req, res) => {
   try {
-    const { PrincipalI, Title, email, messages, Statua } = req.body;
+    const { PrincipalI_id, PrincipalI, PIemail, Title, email, messages, Statua } = req.body;
 
     // File path from multer
     const filePath = req.file.path;
@@ -2439,7 +3018,9 @@ app.post("/Esend", attached.single("file"), async (req, res) => {
 
     // Save data to MongoDB
     const savetoDb = await EsendModel.create({
+      PrincipalI_id,
       PrincipalI,
+      PIemail,
       Title,
       email,
       messages,
@@ -2562,6 +3143,134 @@ res.json(results)
       message: "Server error"
     });
 
+  }
+});
+
+///////////////////////////Autontication Midelwer/////////////////
+
+
+// const authenticateUser = (req, res, next) => {
+
+//   try {
+
+//     const authHeader =
+//       req.headers.authorization;
+
+//     if (!authHeader) {
+
+//       return res.status(401).json({
+//         status: "error",
+//         message: "Authorization token required"
+//       });
+
+//     }
+
+    // Expected:
+    // Authorization: Bearer TOKEN
+
+//     const token =
+//       authHeader.split(" ")[1];
+
+//     if (!token) {
+
+//       return res.status(401).json({
+//         status: "error",
+//         message: "Invalid authorization format"
+//       });
+
+//     }
+
+//     const decoded =
+//       jwt.verify(
+//         token,
+//         JWT_SECRET
+//       );
+
+//     console.log(
+//       "Authenticated user:",
+//       decoded
+//     );
+
+//     // Store decoded information
+//     req.user = decoded;
+
+//     next();
+
+//   } catch (error) {
+
+//     console.error(
+//       "Authentication error:",
+//       error.message
+//     );
+
+//     return res.status(401).json({
+//       status: "error",
+//       message: "Invalid or expired token"
+//     });
+
+//   }
+
+// };
+
+
+////get the login student informatio//////////////////////////////////////////
+app.get("/Esendstudent", async (req, res) => {
+  try {
+
+    const { userId } = req.query;
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const skip = (page - 1) * limit;
+
+    if (!userId) {
+      return res.status(400).json({
+        status: "error",
+        message: "User ID is required",
+      });
+    }
+
+    console.log("Student User ID:", userId);
+
+    // ============================================
+    // FIND ONLY THIS STUDENT'S RECORDS
+    // ============================================
+
+    const filter = {
+      // PrincipalI_id: userId,
+      PrincipalI_id: new mongoose.Types.ObjectId(userId)
+    };
+
+    const total = await EsendModel.countDocuments(filter);
+
+    const result = await EsendModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    console.log("Student confirmation records:", result);
+
+    res.json({
+      status: "ok",
+      result,
+      pageCount: Math.ceil(total / limit),
+      currentPage: page,
+      total,
+    });
+
+  } catch (error) {
+
+    console.error(
+      "Error fetching student confirmation:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: "Server error",
+      error: error.message,
+    });
   }
 });
 //////Homepage SearchPage/////////////////////////////////////////////////////////
@@ -13328,7 +14037,7 @@ require("./model/Research");
 
 const ResearchMondel = mongoose.model("Researchs" )
 const ResearchStor = multer({ storage: ResearchM ,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
   });
 
 app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
@@ -13337,7 +14046,7 @@ app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "No files uploaded" });
     }
-  const { NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
+  const {studentID, NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
 
   const streamUpload = (fileBuffer) => {
       return new Promise((resolve, reject) => {
@@ -13362,6 +14071,7 @@ app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
   const uploaded = await streamUpload(file.path);
   console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
   const savedFile = await ResearchMondel.create({
+    studentID,
     NCollege,
     Department,
     TDepartment,
@@ -18742,5 +19452,5 @@ io.on('connection', (socket) => {
 });
 //  PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log("server is runing")
+    console.log(`server is runing http://localhost:${PORT}`)
 })

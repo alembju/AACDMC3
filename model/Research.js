@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
   
 const ResearchSchema = new mongoose.Schema({
+  studentID: String,
     NCollege: String,
     Department: String,
     TDepartment: String,
