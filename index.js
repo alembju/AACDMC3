@@ -81,70 +81,70 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const SECRET_KEY = JWT_SECRET;
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "LabResult");
 
-/*****************************************************
- * EXPRESS APP INITIALIZATION
- *****************************************************/
-const app = express();
-const server = createServer(app);
-const io = new Server(server);
+// /*****************************************************
+//  * EXPRESS APP INITIALIZATION
+//  *****************************************************/
+// const app = express();
+// const server = createServer(app);
+// const io = new Server(server);
 
 
-/////////////must be open for online//////////////////
+// /////////////must be open for online//////////////////
 
-app.get("*", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "..", "client", "index.html")
-  );
-});
+// app.get("*", (req, res) => {
+//   res.sendFile(
+//     path.join(__dirname, "..", "client", "index.html")
+//   );
+// });
 
-/*****************************************************
- * REQUEST TIMEOUT CONFIG
- *****************************************************/
-app.use((req, res, next) => {
-  req.setTimeout(600000); // 10 minutes
-  res.setTimeout(600000);
-  next();
-});
+// /*****************************************************
+//  * REQUEST TIMEOUT CONFIG
+//  *****************************************************/
+// app.use((req, res, next) => {
+//   req.setTimeout(600000); // 10 minutes
+//   res.setTimeout(600000);
+//   next();
+// });
 
-/*****************************************************
- * GLOBAL MIDDLEWARE
- *****************************************************/
-app.use(logger);
-app.use(express.json());
-app.use(cookieParser());
-app.use(bodyParser.json());
-app.use(express.urlencoded({ extended: true }));
+// /*****************************************************
+//  * GLOBAL MIDDLEWARE
+//  *****************************************************/
+// app.use(logger);
+// app.use(express.json());
+// app.use(cookieParser());
+// app.use(bodyParser.json());
+// app.use(express.urlencoded({ extended: true }));
 
-/*****************************************************
- * CORS CONFIGURATION
- *****************************************************/
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://aacdmc.gov.et",
-      "https://www.aacdmc.gov.et",
-      "*",
-      "https://server-qub9.onrender.com",
-    ],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
-  })
-);
+// /*****************************************************
+//  * CORS CONFIGURATION
+//  *****************************************************/
+// app.use(
+//   cors({
+//     origin: [
+//       "http://localhost:5173",
+//       "https://aacdmc.gov.et",
+//       "https://www.aacdmc.gov.et",
+//       "*",
+//       "https://server-qub9.onrender.com",
+//     ],
+//     allowedHeaders: ["Content-Type", "Authorization"],
+//     methods: ["GET", "POST", "PUT", "DELETE"],
+//     credentials: true,
+//   })
+// );
 
-// Handle preflight requests
-app.options("*", cors());
+// // Handle preflight requests
+// app.options("*", cors());
 
 
 
-/*****************************************************
- * AUTH MIDDLEWARE
- *****************************************************/
-function requireLogin(req, res, next) {
-  if (req.session && req.session.user) return next();
-  return res.status(401).json({ message: "Login required" });
-}
+// /*****************************************************
+//  * AUTH MIDDLEWARE
+//  *****************************************************/
+// function requireLogin(req, res, next) {
+//   if (req.session && req.session.user) return next();
+//   return res.status(401).json({ message: "Login required" });
+// }
 
 // /*****************************************************
 //  * STATIC FILE SERVING
@@ -182,106 +182,106 @@ function requireLogin(req, res, next) {
 /*****************************************************
  * EXPRESS APP INITIALIZATION
  *****************************************************/
-// const app = express();
-// const server = createServer(app);
+const app = express();
+const server = createServer(app);
 
-// const io = new Server(server, {
-//   cors: {
-//     origin: [
-//       "http://localhost:5173",
-//       "https://aacdmc.gov.et",
-//       "https://www.aacdmc.gov.et",
-//       "https://server-qub9.onrender.com",
-//     ],
-//     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-//     credentials: true,
-//   },
-// });
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "http://localhost:5173",
+      "https://aacdmc.gov.et",
+      "https://www.aacdmc.gov.et",
+      "https://server-qub9.onrender.com",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  },
+});
 
-// /*****************************************************
-//  * REQUEST TIMEOUT
-//  *****************************************************/
-// app.use((req, res, next) => {
-//   req.setTimeout(600000);
-//   res.setTimeout(600000);
-//   next();
-// });
+/*****************************************************
+ * REQUEST TIMEOUT
+ *****************************************************/
+app.use((req, res, next) => {
+  req.setTimeout(600000);
+  res.setTimeout(600000);
+  next();
+});
 
-// /*****************************************************
-//  * GLOBAL MIDDLEWARE
-//  *****************************************************/
-// app.use(logger);
+/*****************************************************
+ * GLOBAL MIDDLEWARE
+ *****************************************************/
+app.use(logger);
 
-// app.use(
-//   express.json({
-//     limit: "50mb",
-//   })
-// );
+app.use(
+  express.json({
+    limit: "50mb",
+  })
+);
 
-// app.use(
-//   express.urlencoded({
-//     extended: true,
-//     limit: "50mb",
-//   })
-// );
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: "50mb",
+  })
+);
 
-// app.use(cookieParser());
+app.use(cookieParser());
 
-// /*****************************************************
-//  * CORS
-//  *****************************************************/
-// const allowedOrigins = [
-//   "http://localhost:5173",
-//   "https://aacdmc.gov.et",
-//   "https://www.aacdmc.gov.et",
-//   "https://server-qub9.onrender.com",
-// ];
+/*****************************************************
+ * CORS
+ *****************************************************/
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://aacdmc.gov.et",
+  "https://www.aacdmc.gov.et",
+  "https://server-qub9.onrender.com",
+];
 
-// app.use(
-//   cors({
-//     origin: function (origin, callback) {
+app.use(
+  cors({
+    origin: function (origin, callback) {
 
-//       // Allow requests without an Origin
-//       // such as Postman/server-to-server requests
-//       if (!origin) {
-//         return callback(null, true);
-//       }
+      // Allow requests without an Origin
+      // such as Postman/server-to-server requests
+      if (!origin) {
+        return callback(null, true);
+      }
 
-//       if (allowedOrigins.includes(origin)) {
-//         return callback(null, true);
-//       }
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
 
-//       console.log("Blocked CORS origin:", origin);
+      console.log("Blocked CORS origin:", origin);
 
-//       return callback(
-//         new Error("Not allowed by CORS")
-//       );
-//     },
+      return callback(
+        new Error("Not allowed by CORS")
+      );
+    },
 
-//     methods: [
-//       "GET",
-//       "POST",
-//       "PUT",
-//       "DELETE",
-//       "OPTIONS",
-//     ],
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE",
+      "OPTIONS",
+    ],
 
-//     allowedHeaders: [
-//       "Content-Type",
-//       "Authorization",
-//     ],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
 
-//     credentials: true,
-//   })
-// );
+    credentials: true,
+  })
+);
 
-// /*****************************************************
-//  * PREFLIGHT
-//  *****************************************************/
-// app.options("*", cors({
-//   origin: allowedOrigins,
-//   credentials: true,
-// }));
+/*****************************************************
+ * PREFLIGHT
+ *****************************************************/
+app.options("*", cors({
+  origin: allowedOrigins,
+  credentials: true,
+}));
 
 /*****************************************************
  * STATIC FILES
