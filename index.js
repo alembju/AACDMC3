@@ -61,6 +61,7 @@ const BlogUser = require("./model/BlogUser");
 const Blogcomment = require("./model/Blogcomment");
 const FileEntry = require("./model/FileEntry");
 const Log = require("./model/Log");
+const ResearchAssignmentModel = require("./model/ResearchAssignment");
 const Form = require("./model/Form");
 const NewsFeedMondel = require("./model/NewsFeedMondel");
 const EVENTSMondel = require("./model/Events");
@@ -227,14 +228,17 @@ app.use(
 
 app.use(cookieParser());
 
+app.use(bodyParser.json());
+
+
 /*****************************************************
  * CORS
  *****************************************************/
 const allowedOrigins = [
+  process.env.ALLOWED_ORIGIN,
+  "https://www.aacdmc.net.et",
   "http://localhost:5173",
-  "https://aacdmc.gov.et",
-  "https://www.aacdmc.gov.et",
-  "https://server-qub9.onrender.com",
+  "http://localhost:3000",
 ];
 
 app.use(
@@ -272,9 +276,13 @@ app.use(
     ],
 
     credentials: true,
+
+    optionsSuccessStatus: 204,
   })
 );
 
+// IMPORTANT: CORS MUST COME BEFORE YOUR ROUTES
+// app.use(cors(corsOptions));
 /*****************************************************
  * PREFLIGHT
  *****************************************************/
@@ -822,7 +830,890 @@ app.post("/login-user", async (req, res) => {
   }
 });
 
+ /*****************************************************
+ *   ==== Fetc user who is usertype is reserch ====
+ *****************************************************/
+app.get("/research-users", async (req, res) => {
+  try {
+
+    const users = await User_Login.find({
+      userType: "Reserch"
+    }).select(
+      "_id fname lname email userType"
+    );
+
+    res.json({
+      status: "ok",
+      data: users
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch Research users"
+    });
+
+  }
+});
  
+
+  /*****************************************************
+ *   ==== assignment endpoint ====
+ *****************************************************/
+app.post("/assign-research", async (req, res) => {
+  try {
+    const {
+      proposalId,
+      researchUserId,
+      message,
+    } = req.body;
+
+    // ==========================================
+    // VALIDATION
+    // ==========================================
+
+    if (!proposalId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Proposal ID is required",
+      });
+    }
+
+    if (!researchUserId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Research user is required",
+      });
+    }
+
+    // ==========================================
+    // CHECK PROPOSAL
+    // ==========================================
+
+    const proposal =
+      await ResearchMondel.findById(proposalId);
+
+    if (!proposal) {
+      return res.status(404).json({
+        status: "error",
+        message: "Research proposal not found",
+      });
+    }
+
+    // ==========================================
+    // CHECK RESEARCH USER
+    // ==========================================
+
+    const researchUser =
+      await User_Login.findOne({
+        _id: researchUserId,
+        userType: "Reserch",
+      });
+
+    if (!researchUser) {
+      return res.status(404).json({
+        status: "error",
+        message:
+          "Selected user is not a Research user",
+      });
+    }
+
+    // ==========================================
+    // PREVENT DUPLICATE ASSIGNMENT
+    // ==========================================
+
+    const existingAssignment =
+      await ResearchAssignmentModel.findOne({
+        proposalId: proposalId,
+        researchUserId: researchUserId,
+      });
+
+    if (existingAssignment) {
+      return res.status(409).json({
+        status: "error",
+        message:
+          "This proposal is already assigned to this researcher.",
+      });
+    }
+
+    // ==========================================
+    // CREATE ASSIGNMENT
+    // ==========================================
+
+    const assignment =
+      new ResearchAssignmentModel({
+
+        proposalId: proposalId,
+
+        researchUserId:
+          researchUser._id,
+
+        researchUserFname:
+          researchUser.fname,
+
+        researchUserLname:
+          researchUser.lname,
+
+        researchUserEmail:
+          researchUser.email,
+
+        title:
+          proposal.Title || "Untitled Proposal",
+
+        studentId:
+           proposal.studentID ||
+          "",
+
+        studentFname:
+          proposal.PI ||
+          "",
+
+        status: "Assigned",
+
+        message:
+          message || "",
+
+        assignedAt:
+          new Date(),
+
+      });
+
+    // ==========================================
+    // SAVE ASSIGNMENT
+    // ==========================================
+
+    await assignment.save();
+
+    // ==========================================
+    // UPDATE PROPOSAL
+    // ==========================================
+
+    await ResearchMondel.findByIdAndUpdate(
+      proposalId,
+      {
+        assignedResearchUserId:
+          researchUser._id,
+
+        assignedResearchUserFname:
+          researchUser.fname,
+
+        assignedResearchUserLname:
+          researchUser.lname,
+
+        assignedResearchUserEmail:
+          researchUser.email,
+
+        assignmentStatus:
+          "Assigned",
+
+        assignedAt:
+          new Date(),
+      }
+    );
+
+    // ==========================================
+    // RESPONSE
+    // ==========================================
+
+    return res.status(200).json({
+
+      status: "ok",
+
+      message:
+        "Research proposal assigned successfully",
+
+      data: assignment,
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "ASSIGN RESEARCH ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+
+      status: "error",
+
+      message:
+        "Failed to assign research proposal",
+
+      error:
+        error.message,
+
+    });
+
+  }
+});
+    /////////////////////////////////////reserch assighnment ///////////
+    // =====================================================
+  //reserch assighnment
+  // =====================================================
+    app.put("/assign-researcher/:id", async (req, res) => {
+
+  try {
+
+    const {
+      researcherId,
+      researcherName,
+      researcherEmail
+    } = req.body;
+
+    if (!researcherId) {
+
+      return res.status(400).json({
+        status: "error",
+        message: "Researcher ID is required"
+      });
+
+    }
+
+    const proposal =
+      await ResearchMondel.findByIdAndUpdate(
+
+        req.params.id,
+
+        {
+          assignedResearcherId: researcherId,
+          assignedResearcherName: researcherName,
+          assignedResearcherEmail: researcherEmail,
+
+          assignmentStatus: "Assigned",
+
+          assignedAt: new Date()
+        },
+
+        {
+          new: true
+        }
+      );
+
+    if (!proposal) {
+
+      return res.status(404).json({
+        status: "error",
+        message: "Research proposal not found"
+      });
+
+    }
+
+    res.json({
+      status: "ok",
+      message: "Researcher assigned successfully",
+      data: proposal
+    });
+
+  } catch (error) {
+
+    console.error(
+      "Assignment error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: error.message
+    });
+
+  }
+
+});
+
+///////////////////////////////////API to change assignment status//////////////////
+// =====================================================
+  //API to change assignment status
+  // =====================================================
+
+app.put("/research-assignment-status/:id", async (req, res) => {
+
+  try {
+
+    const {
+      assignmentStatus
+    } = req.body;
+
+    const allowedStatuses = [
+      "Pending",
+      "Assigned",
+      "Under Review",
+      "Completed"
+    ];
+
+    if (!allowedStatuses.includes(assignmentStatus)) {
+
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid assignment status"
+      });
+
+    }
+
+    const updateData = {
+      assignmentStatus
+    };
+
+    if (assignmentStatus === "Completed") {
+      updateData.completedAt = new Date();
+    }
+
+    const proposal =
+      await ResearchMondel.findByIdAndUpdate(
+
+        req.params.id,
+
+        updateData,
+
+        {
+          new: true
+        }
+      );
+
+    if (!proposal) {
+
+      return res.status(404).json({
+        status: "error",
+        message: "Research proposal not found"
+      });
+
+    }
+
+    res.json({
+      status: "ok",
+      message: "Assignment status updated",
+      data: proposal
+    });
+
+  } catch (error) {
+
+    console.error(
+      "Status update error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: error.message
+    });
+
+  }
+
+});
+   // ==========================================
+    //FIND PROPOSALS ASSIGNED TO THIS RESEARCHER
+    // ==========================================
+
+app.get("/researcher-proposals/:researcherId", async (req, res) => {
+
+  try {
+
+    const { researcherId } = req.params;
+
+    console.log(
+      "===================================="
+    );
+
+    console.log(
+      "Researcher ID:",
+      researcherId
+    );
+
+    console.log(
+      "Getting assigned proposals..."
+    );
+
+    // ==========================================
+    // FIND PROPOSALS ASSIGNED TO THIS RESEARCHER
+    // ==========================================
+
+    const proposals =
+      await ResearchMondel.find({
+
+        assignedResearcherId:
+          researcherId
+
+      }).sort({
+        assignedAt: -1
+      });
+
+    console.log(
+      "Assigned proposals:",
+      proposals.length
+    );
+
+    res.status(200).json({
+
+      status: "ok",
+
+      data: proposals
+
+    });
+
+  } catch (error) {
+
+    console.error(
+      "Error fetching researcher proposals:",
+      error
+    );
+
+    res.status(500).json({
+
+      status: "error",
+
+      message:
+        "Failed to fetch assigned research proposals",
+
+      error:
+        error.message
+
+    });
+
+  }
+
+});
+ // ==========================================
+    // FIND PROPOSALS ASSIGNED TO THIS RESEARCHER
+    // ==========================================
+
+// app.get(
+//   "/assigned-research-proposals/:researcherId",
+//   async (req, res) => {
+
+//     try {
+
+//       const { researcherId } =
+//         req.params;
+
+//       if (!researcherId) {
+
+//         return res.status(400).json({
+//           status: "error",
+//           message:
+//             "Researcher ID is required",
+//         });
+
+//       }
+
+//       const assignments =
+//         await ResearchAssignmentModel
+//           .find({
+//             researchUserId:
+//               researcherId,
+//           })
+//           .sort({
+//             assignedAt: -1,
+//           });
+
+//       return res.status(200).json({
+
+//         status: "ok",
+
+//         data: assignments,
+
+//       });
+
+//     } catch (error) {
+
+//       console.error(
+//         "GET ASSIGNED RESEARCH ERROR:",
+//         error
+//       );
+
+//       return res.status(500).json({
+
+//         status: "error",
+
+//         message:
+//           "Failed to fetch assigned research proposals",
+
+//         error:
+//           error.message,
+
+//       });
+
+//     }
+//   }
+// );
+
+app.put(
+  "/research-proposal/:id/status",
+  async (req, res) => {
+    try {
+
+      const {
+        researcherId,
+        assignmentStatus,
+        researcherComment
+      } = req.body;
+
+      if (!researcherId) {
+        return res.status(400).json({
+          status: "error",
+          message: "Researcher ID is required",
+        });
+      }
+
+      const allowedStatuses = [
+        "Pending",
+        "Assigned",
+        "Under Review",
+        "Completed",
+      ];
+
+      if (!allowedStatuses.includes(assignmentStatus)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid assignment status",
+        });
+      }
+
+      const proposal =
+        await ResearchMondel.findOneAndUpdate(
+          {
+            _id: req.params.id,
+            assignedResearcherId: researcherId,
+          },
+          {
+            assignmentStatus,
+            researcherComment:
+              researcherComment || "",
+            researcherReviewedAt:
+              new Date(),
+          },
+          {
+            new: true,
+          }
+        );
+
+      if (!proposal) {
+        return res.status(404).json({
+          status: "error",
+          message:
+            "Proposal not found or not assigned to this researcher",
+        });
+      }
+
+      res.json({
+        status: "ok",
+        message: "Proposal status updated successfully",
+        data: proposal,
+      });
+
+    } catch (error) {
+
+      console.error(
+        "Status update error:",
+        error
+      );
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to update proposal status",
+      });
+    }
+  }
+);
+
+app.get(
+  "/assigned-research-proposals/:researcherId",
+  async (req, res) => {
+    try {
+
+      const { researcherId } =
+        req.params;
+
+      console.log(
+        "Researcher ID:",
+        researcherId
+      );
+
+      const assignments =
+        await ResearchAssignmentModel
+          .find({
+            researchUserId:
+              researcherId,
+          })
+          .sort({
+            assignedAt: -1,
+          });
+
+      console.log(
+        "Assignments found:",
+        assignments.length
+      );
+
+      return res.status(200).json({
+        status: "ok",
+        data: assignments,
+      });
+
+    } catch (error) {
+
+      console.error(
+        "Assigned proposal error:",
+        error
+      );
+
+      return res.status(500).json({
+        status: "error",
+        message:
+          "Failed to fetch assigned proposals",
+        error:
+          error.message,
+      });
+    }
+  }
+);
+ // ==========================================
+    // FIND PROPOSALS ASSIGNED TO THIS RESEARCHER
+    // ==========================================
+// app.put(
+//   "/researcher-assignment-status/:proposalId",
+//   async (req, res) => {
+
+//     try {
+
+//       const { proposalId } =
+//         req.params;
+
+//       const {
+//         assignmentStatus,
+//         researcherId,
+//       } = req.body;
+
+//       // ==========================================
+//       // VALIDATION
+//       // ==========================================
+
+//       if (!proposalId) {
+
+//         return res.status(400).json({
+//           status: "error",
+//           message:
+//             "Proposal ID is required",
+//         });
+
+//       }
+
+//       if (!researcherId) {
+
+//         return res.status(400).json({
+//           status: "error",
+//           message:
+//             "Researcher ID is required",
+//         });
+
+//       }
+
+//       const allowedStatuses = [
+//         "Assigned",
+//         "Under Review",
+//         "Completed",
+//       ];
+
+//       if (
+//         !allowedStatuses.includes(
+//           assignmentStatus
+//         )
+//       ) {
+
+//         return res.status(400).json({
+//           status: "error",
+//           message:
+//             "Invalid assignment status",
+//         });
+
+//       }
+
+//       // ==========================================
+//       // FIND ASSIGNMENT
+//       // ==========================================
+
+//       const assignment =
+//         await ResearchAssignmentModel.findOne({
+//           proposalId:
+//             proposalId,
+
+//           researchUserId:
+//             researcherId,
+//         });
+
+//       if (!assignment) {
+
+//         return res.status(404).json({
+//           status: "error",
+//           message:
+//             "Assignment not found or this proposal is not assigned to you.",
+//         });
+
+//       }
+
+//       // ==========================================
+//       // UPDATE ASSIGNMENT
+//       // ==========================================
+
+//       assignment.status =
+//         assignmentStatus;
+
+//       if (
+//         assignmentStatus ===
+//         "Completed"
+//       ) {
+
+//         assignment.completedAt =
+//           new Date();
+
+//       } else {
+
+//         assignment.completedAt =
+//           null;
+
+//       }
+
+//       await assignment.save();
+
+//       // ==========================================
+//       // UPDATE RESEARCH PROPOSAL
+//       // ==========================================
+
+//       await ResearchMondel.findByIdAndUpdate(
+//         proposalId,
+//         {
+//           assignmentStatus:
+//             assignmentStatus,
+//         }
+//       );
+
+//       // ==========================================
+//       // RESPONSE
+//       // ==========================================
+
+//       return res.status(200).json({
+
+//         status: "ok",
+
+//         message:
+//           "Assignment status updated successfully",
+
+//         data: assignment,
+
+//       });
+
+//     } catch (error) {
+
+//       console.error(
+//         "UPDATE ASSIGNMENT STATUS ERROR:",
+//         error
+//       );
+
+//       return res.status(500).json({
+
+//         status: "error",
+
+//         message:
+//           "Failed to update assignment status",
+
+//         error:
+//           error.message,
+
+//       });
+
+//     }
+
+//   }
+// );
+
+app.put("/researcher-assignment-status/:proposalId", async (req, res) => {
+  try {
+    const { proposalId } = req.params;
+    const { researcherId, assignmentStatus } = req.body;
+
+    if (!proposalId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Proposal ID is required"
+      });
+    }
+
+    if (!researcherId) {
+      return res.status(400).json({
+        status: "error",
+        message: "Researcher ID is required"
+      });
+    }
+
+    if (!assignmentStatus) {
+      return res.status(400).json({
+        status: "error",
+        message: "Assignment status is required"
+      });
+    }
+
+    const allowedStatuses = [
+      "Assigned",
+      "Under Review",
+      "Completed"
+    ];
+
+    if (!allowedStatuses.includes(assignmentStatus)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid assignment status"
+      });
+    }
+
+    // Find the assignment for this researcher and proposal
+    const assignment = await ResearchAssignmentModel.findOne({
+      proposalId: proposalId,
+      researchUserId: researcherId
+    });
+
+    if (!assignment) {
+      return res.status(404).json({
+        status: "error",
+        message: "Research assignment not found"
+      });
+    }
+
+    // Update assignment status
+    assignment.status = assignmentStatus;
+
+    if (assignmentStatus === "Completed") {
+      assignment.completedAt = new Date();
+    }
+
+    await assignment.save();
+
+    // Also update the original research proposal
+    const research = await ResearchMondel.findById(proposalId);
+
+    if (research) {
+      research.assignmentStatus = assignmentStatus;
+
+      await research.save();
+    }
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Assignment status updated successfully",
+      data: assignment
+    });
+
+  } catch (error) {
+    console.error("Status update error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to update assignment status",
+      error: error.message
+    });
+  }
+});
+   
   /*****************************************************
  *   ==== LOG HISTORY HANDLING ====
  *****************************************************/
@@ -1527,6 +2418,17 @@ app.get("/fetching-option", async (req, res) => {
           PIemail: 1,
           Title: 1,
           createdAt: -1
+          
+        }
+      },
+        {
+        $project: {
+        _id: 1,
+        studentID: 1,
+        PI: 1,
+        PIemail: 1,
+        email: 1,
+        Title: 1
         }
       }
 
@@ -2943,6 +3845,16 @@ app.get('/fetching-Rech', async(req, res) =>{
     //.catch(err => console.log(err))  
     ///passswpred---------invg pgzi yrbs qntc----
     })
+    
+      /////////delet geting all news//////////////////
+      app.get("/RECH-Proposal", async (req, res) => {
+        try {
+          const allUser = await ResearchMondel.find({});
+          res.send({ status: "ok", data: allUser });
+        } catch (error) {
+          console.log(error);
+        }
+      });
 /////////////////////////////////e-mail///////////////////////
 //app.use(cors());
 //app.use(express.json({ limit: "25mb" }));
@@ -3001,11 +3913,14 @@ const Esend = multer.diskStorage({
 require("./model/Esend");
 const EsendModel = mongoose.model("Esend");
 
-const attached = multer({ storage: Esend });
+const attached = multer({ storage: Esend ,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
+});
 
 app.post("/Esend", attached.single("file"), async (req, res) => {
+  
   try {
-    const { PrincipalI_id, PrincipalI, PIemail, Title, email, messages, Statua } = req.body;
+    const {researcherFname,researcherLname,PrincipalI_id, PrincipalI, PIemail, Title, email, messages, Statua } = req.body;
 
     // File path from multer
     const filePath = req.file.path;
@@ -3018,6 +3933,8 @@ app.post("/Esend", attached.single("file"), async (req, res) => {
 
     // Save data to MongoDB
     const savetoDb = await EsendModel.create({
+      researcherFname,
+      researcherLname,
       PrincipalI_id,
       PrincipalI,
       PIemail,

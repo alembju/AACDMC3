@@ -31,6 +31,15 @@ const mongoose = require("mongoose");
 const EsendSchema =
   new mongoose.Schema(
     {
+        researcherFname: {
+        type: String,
+        required: true,
+      },
+
+      researcherLname: {
+        type: String,
+        required: true,
+      },
 
       PrincipalI_id: {
         type: mongoose.Schema.Types.ObjectId,

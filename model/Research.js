@@ -43,10 +43,46 @@ const ResearchSchema = new mongoose.Schema({
     url: String,
     original_filename: String,
     format: String,
-    createdAt: { type: Date, default: Date.now },  
-},
-{
-  timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
-}
+    assignmentStatus: {
+    type: String,
+    enum: [
+      "Pending",
+      "Assigned",
+      "Under Review",
+      "Completed"
+    ],
+    default: "Pending"
+    },
+
+    assignedResearcherId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User_Login",
+      default: null
+    },
+
+    assignedResearcherName: {
+      type: String,
+      default: ""
+    },
+
+    assignedResearcherEmail: {
+      type: String,
+      default: ""
+    },
+
+    assignedAt: {
+      type: Date,
+      default: null
+    },
+
+    completedAt: {
+      type: Date,
+      default: null
+    },
+        createdAt: { type: Date, default: Date.now },  
+    },
+    {
+      timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
+    }
 );
 module.exports = mongoose.model('Researchs', ResearchSchema);
