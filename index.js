@@ -8,6 +8,7 @@ const dotenv = require("dotenv");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+// const bcrypt = require("bcryptjs");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
@@ -68,6 +69,7 @@ const EVENTSMondel = require("./model/Events");
 const RepDeseaseMondel = require("./model/RepDesease");
 const Component = require("./model/Component");
 const CoRegistrationMondel = require("./model/CoRegistration");
+const PasswordReset = require("./model/PasswordReset");
 
 /*****************************************************
  * ROUTES
@@ -330,7 +332,17 @@ app.use(express.static(path.join(__dirname, "BanerImage")));
 mongoose.connect(process.env.MONGO_URL, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-});
+})
+.then(() => {
+    console.log("✅ MongoDB connected");
+  })
+  .catch((error) => {
+    console.error(
+      "❌ MongoDB connection failed:",
+      error.message
+    );
+    process.exit(1);
+  });
 
 const store = MongoStore.create({
   mongoUrl: process.env.MONGO_URL,
@@ -557,7 +569,520 @@ app.put("/manage-student/:id/status", async (req, res) => {
 
 });
 
+ // ==========================================
+    // NODMAILER FOR FORGET PASSWORD
+    // ==========================================
+    const transporter = nodemailer.createTransport({
+  // service: "gmail",
+  host: process.env.SMTP_HOST,
+  port: 465,
+  secure: true,
+  // port: process.env.SMTP_PORT,
+  // secure: false, // true for 465, false for other ports
+  // logger:true,
+  // debug:true,
+  // secureConnection:false,
 
+  auth: {
+    user: process.env.SMTP_MAIL,
+    pass: process.env.SMTP_PASSWORD,
+  },
+    connectionTimeout: 60000,
+  greetingTimeout: 30000,
+  socketTimeout: 300000,
+});
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("❌ Email configuration error:", error.message);
+  } else {
+    console.log("✅ Email server is ready");
+  }
+});
+
+const generateOTP = () => {
+  return crypto
+    .randomInt(100000, 1000000)
+    .toString();
+};
+
+const hashValue = (value) => {
+  return crypto
+    .createHash("sha256")
+    .update(value)
+    .digest("hex");
+};
+
+// ==========================================
+    // FORGET PASSWORD
+    // ==========================================
+app.post("/forgot-password", async (req, res) => {
+  try {
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+
+    if (!email) {
+      return res.status(400).json({
+        status: "error",
+        message: "Email is required.",
+      });
+    }
+
+    // Find user
+    const user = await User_Login.findOne({
+      email,
+    });
+
+    /*
+      IMPORTANT:
+      We return the same response whether the email exists
+      or not. This prevents revealing which emails are registered.
+    */
+    if (!user) {
+      return res.status(200).json({
+        status: "ok",
+        message:
+          "If this email is registered, a verification code has been sent.",
+      });
+    }
+
+    // Remove old reset request
+    await PasswordReset.deleteMany({
+      userId: user._id,
+    });
+
+    // Generate OTP
+    const otp = generateOTP();
+
+    // Hash OTP before storing
+    const otpHash = hashValue(otp);
+
+    const expiresMinutes =
+      Number(process.env.OTP_EXPIRES_MINUTES) || 10;
+
+    const otpExpiresAt = new Date(
+      Date.now() + expiresMinutes * 60 * 1000
+    );
+
+    // Save reset information
+    await PasswordReset.create({
+      userId: user._id,
+      email: user.email,
+      otpHash,
+      otpExpiresAt,
+      otpAttempts: 0,
+      maxOtpAttempts: 5,
+      verified: false,
+    });
+
+    // Send email
+    const mailOptions = {
+      from: `"AAPHREM Research System" <${process.env.SMTP_MAIL}>`,
+
+      to: user.email,
+
+      subject: "AAPHREM Password Reset Verification Code",
+
+      html: `
+        <div style="
+          font-family: Arial, sans-serif;
+          max-width: 600px;
+          margin: auto;
+          background: #f8f9fa;
+          padding: 30px;
+        ">
+
+          <div style="
+            background: #0d6efd;
+            color: white;
+            padding: 25px;
+            text-align: center;
+            border-radius: 12px 12px 0 0;
+          ">
+
+            <h2 style="margin: 0;">
+              AAPHREM
+            </h2>
+
+            <p style="margin: 8px 0 0;">
+              Public Health Research System
+            </p>
+
+          </div>
+
+          <div style="
+            background: white;
+            padding: 30px;
+            border-radius: 0 0 12px 12px;
+          ">
+
+            <h3>Password Reset Request</h3>
+
+            <p>
+              Dear ${user.fname || "User"},
+            </p>
+
+            <p>
+              We received a request to reset your AAPHREM
+              account password.
+            </p>
+
+            <p>
+              Your verification code is:
+            </p>
+
+            <div style="
+              font-size: 36px;
+              font-weight: bold;
+              letter-spacing: 8px;
+              text-align: center;
+              padding: 20px;
+              background: #f1f3f5;
+              border-radius: 10px;
+              color: #0d6efd;
+              margin: 20px 0;
+            ">
+              ${otp}
+            </div>
+
+            <p>
+              This code will expire in
+              <strong>${expiresMinutes} minutes</strong>.
+            </p>
+
+            <p>
+              If you did not request a password reset,
+              you can safely ignore this email.
+            </p>
+
+            <hr />
+
+            <small style="color: #6c757d;">
+              AAPHREM Public Health Research System
+            </small>
+
+          </div>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return res.status(200).json({
+      status: "ok",
+      message:
+        "If this email is registered, a verification code has been sent.",
+    });
+  } catch (error) {
+    console.error(
+      "Forgot password error:",
+      error
+    );
+
+    return res.status(500).json({
+      status: "error",
+      message: "Unable to process password reset request.",
+    });
+  }
+});
+
+// ==========================================
+    // Reset password
+    // ==========================================
+
+    app.post("/reset-password", async (req, res) => {
+  try {
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+
+    const resetToken = String(
+      req.body.resetToken || ""
+    ).trim();
+
+    const newPassword = String(
+      req.body.newPassword || ""
+    );
+
+    if (
+      !email ||
+      !resetToken ||
+      !newPassword
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Email, reset token, and new password are required.",
+      });
+    }
+
+    // Password validation
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Password must be at least 8 characters.",
+      });
+    }
+
+    if (!/[A-Z]/.test(newPassword)) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Password must contain an uppercase letter.",
+      });
+    }
+
+    if (!/[a-z]/.test(newPassword)) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Password must contain a lowercase letter.",
+      });
+    }
+
+    if (!/[0-9]/.test(newPassword)) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Password must contain a number.",
+      });
+    }
+
+    if (!/[^A-Za-z0-9]/.test(newPassword)) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Password must contain a special character.",
+      });
+    }
+
+    // Find reset request
+    const resetRequest =
+      await PasswordReset.findOne({
+        email,
+        verified: true,
+      });
+
+    if (!resetRequest) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Password reset verification is invalid.",
+      });
+    }
+
+    // Check reset token expiration
+    if (
+      !resetRequest.resetTokenExpiresAt ||
+      new Date() >
+        new Date(
+          resetRequest.resetTokenExpiresAt
+        )
+    ) {
+      await PasswordReset.deleteOne({
+        _id: resetRequest._id,
+      });
+
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Reset session has expired. Please start again.",
+      });
+    }
+
+    // Compare token
+    const tokenHash =
+      hashValue(resetToken);
+
+    if (
+      tokenHash !==
+      resetRequest.resetTokenHash
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Invalid password reset token.",
+      });
+    }
+
+    // Find user
+    const user =
+      await User_Login.findById(
+        resetRequest.userId
+      );
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "User account not found.",
+      });
+    }
+
+    // Hash new password
+    const hashedPassword =
+      await bcrypt.hash(
+        newPassword,
+        12
+      );
+
+    user.password = hashedPassword;
+
+    await user.save();
+
+    // Delete reset request
+    await PasswordReset.deleteOne({
+      _id: resetRequest._id,
+    });
+
+    return res.status(200).json({
+      status: "ok",
+      message:
+        "Password reset successfully. You can now login with your new password.",
+    });
+  } catch (error) {
+    console.error(
+      "Reset password error:",
+      error
+    );
+
+    return res.status(500).json({
+      status: "error",
+      message:
+        "Unable to reset password.",
+    });
+  }
+});
+
+
+
+// =====================================================
+// VERIFY RESET OTP
+// =====================================================
+app.post("/verify-reset-otp", async (req, res) => {
+  try {
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+
+    const otp = String(req.body.otp || "").trim();
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        status: "error",
+        message: "Email and OTP are required.",
+      });
+    }
+
+    const resetRequest =
+      await PasswordReset.findOne({
+        email,
+      });
+
+    if (!resetRequest) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Verification request not found. Please request a new code.",
+      });
+    }
+
+    // Check expiration
+    if (
+      new Date() >
+      new Date(resetRequest.otpExpiresAt)
+    ) {
+      await PasswordReset.deleteOne({
+        _id: resetRequest._id,
+      });
+
+      return res.status(400).json({
+        status: "error",
+        message:
+          "OTP has expired. Please request a new code.",
+      });
+    }
+
+    // Already verified
+    if (resetRequest.verified) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "OTP has already been used.",
+      });
+    }
+
+    // Maximum attempts
+    if (
+      resetRequest.otpAttempts >=
+      resetRequest.maxOtpAttempts
+    ) {
+      await PasswordReset.deleteOne({
+        _id: resetRequest._id,
+      });
+
+      return res.status(429).json({
+        status: "error",
+        message:
+          "Too many incorrect attempts. Please request a new code.",
+      });
+    }
+
+    const submittedHash = hashValue(otp);
+
+    if (
+      submittedHash !==
+      resetRequest.otpHash
+    ) {
+      resetRequest.otpAttempts += 1;
+
+      await resetRequest.save();
+
+      const remaining =
+        resetRequest.maxOtpAttempts -
+        resetRequest.otpAttempts;
+
+      return res.status(400).json({
+        status: "error",
+        message:
+          `Incorrect OTP. ${remaining} attempt(s) remaining.`,
+      });
+    }
+
+    // Generate secure reset token
+    const resetToken =
+      crypto.randomBytes(32).toString("hex");
+
+    const resetTokenHash =
+      hashValue(resetToken);
+
+    resetRequest.verified = true;
+    resetRequest.resetTokenHash =
+      resetTokenHash;
+
+    resetRequest.resetTokenExpiresAt =
+      new Date(Date.now() + 15 * 60 * 1000);
+
+    await resetRequest.save();
+
+    return res.status(200).json({
+      status: "ok",
+      message:
+        "OTP verified successfully.",
+      resetToken,
+    });
+  } catch (error) {
+    console.error(
+      "Verify OTP error:",
+      error
+    );
+
+    return res.status(500).json({
+      status: "error",
+      message: "Unable to verify OTP.",
+    });
+  }
+});
 
   // app.post("/login-user", async (req, res) => {
   //   const { email, password } = req.body;
@@ -647,6 +1172,7 @@ app.put("/manage-student/:id/status", async (req, res) => {
 //     });
 //   }
 // });
+
 
 app.post("/login-user", async (req, res) => {
   try {
