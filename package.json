@@ -10,13 +10,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "body-parser": "^1.20.3",
+    "cloudinary": "^2.11.0",
     "connect-mongo": "^5.1.0",
     "connect-mongodb-session": "^5.0.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
-    "crypto-browserify": "^3.12.1",
+    "crypto-browserify": "^3.3.0",
     "date-fns": "^3.6.0",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
@@ -28,9 +29,9 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^5.7.0",
     "mongoose": "^7.4.3",
-    "multer": "^1.4.5-lts.1",
-    "multer-storage-cloudinary": "^4.0.0",
-    "nodemailer": "^7.0.9",
+    "multer": "^2.4.0",
+    "multer-storage-cloudinary": "^2.2.1",
+    "nodemailer": "^10.0.10",
     "nodemon": "^3.0.1",
     "path": "^0.12.7",
     "qrcode": "^1.5.4",
@@ -38,6 +39,6 @@
     "socket.io": "^4.8.1",
     "stream-browserify": "^3.0.0",
     "streamifier": "^0.1.1",
-    "uuid": "^10.0.0"
+    "uuid": "^14.0.2"
   }
 }

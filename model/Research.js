@@ -46,10 +46,18 @@ const ResearchSchema = new mongoose.Schema({
     assignmentStatus: {
     type: String,
     enum: [
-      "Pending",
-      "Assigned",
-      "Under Review",
-      "Completed"
+    "Assigned",
+    "Pending",
+    "underReview",
+    "Accepted",
+    "Rejected",
+    "completed",
+    "unknown"
+
+      //  "Pending",
+      // "Assigned",
+      // "Under Review",
+      // "Completed"
     ],
     default: "Pending"
     },

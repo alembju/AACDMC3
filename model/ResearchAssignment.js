@@ -51,14 +51,33 @@ const ResearchAssignmentSchema = new mongoose.Schema(
     // Assignment status
     status: {
       type: String,
-      enum: [
-        "Pending",
-        "Assigned",
-        "Under Review",
-        "Completed",
-      ],
-      default: "Assigned",
-    },
+  enum: [
+    "Assigned",
+    "Pending",
+    "underReview",
+    "Accepted",
+    "Rejected",
+    "completed",
+    "unknown"
+  ],
+  default: "Pending",
+},
+
+// Assignment status
+// assignmentStatus: {
+//   type: String,
+//   enum: [
+//     "Assigned",
+//     "Pending",
+//     "under Review",
+//     "Accepted",
+//     "Rejected",
+//     "completed",
+//     "unknown"
+//   ],
+//   default: "Pending"
+// },
+
 
     // Optional message
     message: {

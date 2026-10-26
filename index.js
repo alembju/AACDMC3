@@ -61,7 +61,7 @@ const User = require("./model/User");
 const BlogUser = require("./model/BlogUser");
 const Blogcomment = require("./model/Blogcomment");
 const FileEntry = require("./model/FileEntry");
-const Log = require("./model/Log");
+const AuditLog = require("./model/Log");
 const ResearchAssignmentModel = require("./model/ResearchAssignment");
 const Form = require("./model/Form");
 const NewsFeedMondel = require("./model/NewsFeedMondel");
@@ -88,6 +88,20 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "LabResult");
 //  * EXPRESS APP INITIALIZATION
 //  *****************************************************/
 // const app = express();
+// app.use(logger);
+
+// app.use(
+//   express.json({
+//     limit: "50mb",
+//   })
+// );
+
+// app.use(
+//   express.urlencoded({
+//     extended: true,
+//     limit: "50mb",
+//   })
+// );
 // const server = createServer(app);
 // const io = new Server(server);
 
@@ -121,24 +135,78 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "LabResult");
 // /*****************************************************
 //  * CORS CONFIGURATION
 //  *****************************************************/
+// const allowedOrigins = [
+//   process.env.ALLOWED_ORIGIN,
+//   "https://www.aacdmc.net.et",
+//   "http://localhost:5173",
+//   "http://localhost:3000",
+// ];
+
 // app.use(
 //   cors({
 //     origin: [
 //       "http://localhost:5173",
-//       "https://aacdmc.gov.et",
-//       "https://www.aacdmc.gov.et",
+//       "https://aacdmc.net.et",
+//       "https://www.aacdmc.net.et",
 //       "*",
 //       "https://server-qub9.onrender.com",
 //     ],
 //     allowedHeaders: ["Content-Type", "Authorization"],
-//     methods: ["GET", "POST", "PUT", "DELETE"],
+//     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 //     credentials: true,
 //   })
 // );
 
-// // Handle preflight requests
-// app.options("*", cors());
 
+// // const allowedOrigins = [
+// //   process.env.ALLOWED_ORIGIN,
+// //   "http://localhost:5173",
+// //   "https://www.aacdmc.net.et",
+// //   "http://localhost:3000",
+// // ];
+
+// // app.use(
+// //   cors({
+// //     origin: function (origin, callback) {
+
+// //       // Allow requests without an Origin
+// //       // such as Postman/server-to-server requests
+// //       if (!origin) {
+// //         return callback(null, true);
+// //       }
+
+// //       if (allowedOrigins.includes(origin)) {
+// //         return callback(null, true);
+// //       }
+
+// //       console.log("Blocked CORS origin:", origin);
+
+// //       return callback(
+// //         new Error("Not allowed by CORS")
+// //       );
+// //     },
+
+// //     methods: [
+// //       "GET",
+// //       "POST",
+// //       "PUT",
+// //       "DELETE",
+// //       "OPTIONS",
+// //     ],
+
+// //     allowedHeaders: [
+// //       "Content-Type",
+// //       "Authorization",
+// //     ],
+
+// //     credentials: true,
+
+// //     optionsSuccessStatus: 204,
+// //   })
+// // );
+
+// // Handle preflight requests
+// // app.options("*", cors());
 
 
 // /*****************************************************
@@ -192,8 +260,8 @@ const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:5173",
-      "https://aacdmc.gov.et",
-      "https://www.aacdmc.gov.et",
+      "https://aacdmc.net.et",
+      "https://www.aacdmc.net.et",
       "https://server-qub9.onrender.com",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -284,7 +352,7 @@ app.use(
 );
 
 // IMPORTANT: CORS MUST COME BEFORE YOUR ROUTES
-// app.use(cors(corsOptions));
+//  app.use(cors(corsOptions));
 /*****************************************************
  * PREFLIGHT
  *****************************************************/
@@ -292,6 +360,40 @@ app.options("*", cors({
   origin: allowedOrigins,
   credentials: true,
 }));
+
+
+
+
+// =====================================================
+// API ROUTES
+// =====================================================
+
+app.get("/api/search", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+
+    // Empty search
+    if (!q) {
+      return res.status(200).json([]);
+    }
+
+    // Your search logic here
+    // Example:
+    // const results = await YourModel.find({
+    //   Title: { $regex: q, $options: "i" }
+    // });
+
+    const results = [];
+
+    return res.status(200).json(results);
+  } catch (error) {
+    console.error("Search error:", error);
+
+    return res.status(500).json({
+      message: "Search failed",
+    });
+  }
+});
 
 /*****************************************************
  * STATIC FILES
@@ -400,17 +502,78 @@ app.use(
  *   ==== AUTH MIDDLEWARE ====
  *****************************************************/
 
-const verifyToken = (req, res, next) => {
-  const token = req.cookies.token;
-  if (!token) return res.status(401).json({ message: "No token" });
+// const verifyToken = (req, res, next) => {
+//   const token = req.cookies.token;
+//   if (!token) return res.status(401).json({ message: "No token" });
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(403).json({ message: "Invalid token" });
-    req.userId = decoded.id;
-    req.userName = decoded.name;
+//   jwt.verify(token, JWT_SECRET, (err, decoded) => {
+//     if (err) return res.status(403).json({ message: "Invalid token" });
+//     req.userId = decoded.id;
+//     req.userName = decoded.name;
+//     next();
+//   });
+// };
+// const jwt = require("jsonwebtoken");
+
+// Use your existing JWT secret consistently.
+// const JWT_SECRET = process.env.JWT_SECRET;
+
+function verifyToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  // Check whether the frontend sent the token.
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      status: "error",
+      code: "TOKEN_MISSING",
+      message: "Authentication token is missing. Please sign in."
+    });
+  }
+
+  const token = authHeader.slice(7).trim();
+
+  try {
+    // IMPORTANT: Use the same secret that signs the login token.
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Read the user ID from the token payload.
+    const userId =
+      decoded.userId ||
+      decoded.id ||
+      decoded._id ||
+      decoded.sub;
+
+    if (!userId) {
+      return res.status(401).json({
+        status: "error",
+        code: "USER_ID_MISSING",
+        message: "The authentication token does not contain a user ID."
+      });
+    }
+
+    // Make the authenticated identity available to your profile routes.
+    req.userId = userId;
+    req.decoded = decoded;
+
+    req.user = {
+      userId,
+      userType: decoded.userType || ""
+    };
+
     next();
-  });
-};
+
+  } catch (error) {
+    const expired = error.name === "TokenExpiredError";
+
+    return res.status(401).json({
+      status: "error",
+      code: expired ? "TOKEN_EXPIRED" : "TOKEN_INVALID",
+      message: expired
+        ? "Your login session has expired. Please sign in again."
+        : "Your authentication token is invalid. Please sign in again."
+    });
+  }
+}
 
 
 /*****************************************************
@@ -421,7 +584,7 @@ const verifyToken = (req, res, next) => {
   const User_Login = mongoose.model("UserInfo");
 
   app.post("/register", async (req, res) => {
-    const { fname, lname, email, password, userType } = req.body;
+    const { fname, lname, email,birthDate, gender ,Phone ,password, userType } = req.body;
   
     const encryptedPassword = await bcrypt.hash(password, 10);
     try {
@@ -434,6 +597,9 @@ const verifyToken = (req, res, next) => {
         fname,
         lname,
         email,
+        birthDate,
+        gender,
+        Phone,
         password: encryptedPassword,
         userType,
       });
@@ -482,6 +648,7 @@ app.get("/manage-students", async (req, res) => {
   }
 
 });
+
 
 // =====================================================
 // UPDATE STUDENT ACCOUNT STATUS
@@ -567,6 +734,87 @@ app.put("/manage-student/:id/status", async (req, res) => {
 
   }
 
+});
+
+// ==========================================
+// ACCOUNT MANAGEMENT BACKEND ENDPOINTS
+// ==========================================
+
+// 1. GET ALL USERS (All User Types)
+app.get('/Account-manage', async (req, res) => {
+  try {
+    const users = await User_Login.find({}); // Replace User with your Mongoose model if needed
+    res.json({ status: "ok", data: users });
+  } catch (error) {
+    console.error("Error fetching accounts:", error);
+    res.status(500).json({ status: "error", message: "Failed to fetch accounts" });
+  }
+});
+
+// 2. UPDATE ACCOUNT STATUS (Active, Inactive, Disabled)
+// ==========================================
+// UPDATE ACCOUNT STATUS ENDPOINT
+// ==========================================
+app.put('/manage-student/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { accountStatus } = req.body;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      { accountStatus },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+
+    res.json({ status: "ok", message: "Status updated successfully", data: updatedUser });
+  } catch (error) {
+    console.error("Error updating status:", error);
+    res.status(500).json({ status: "error", message: "Failed to update account status" });
+  }
+});
+
+// 3. EDIT USER ACCOUNT DETAILS
+app.put('/Account-manage/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fname, lname, email, userType } = req.body;
+
+    const updatedUser = await User_Login.findByIdAndUpdate(
+      id,
+      { fname, lname, email, userType },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+
+    res.json({ status: "ok", message: "Account updated successfully", data: updatedUser });
+  } catch (error) {
+    console.error("Error updating account:", error);
+    res.status(500).json({ status: "error", message: "Failed to update account" });
+  }
+});
+
+// 4. DELETE USER ACCOUNT
+app.delete('/Account-manage/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedUser = await User_Login.findByIdAndDelete(id);
+
+    if (!deletedUser) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+
+    res.json({ status: "ok", message: "Account deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting account:", error);
+    res.status(500).json({ status: "error", message: "Failed to delete account" });
+  }
 });
 
  // ==========================================
@@ -1084,6 +1332,545 @@ app.post("/verify-reset-otp", async (req, res) => {
   }
 });
 
+// ============================================================
+// PROFILE ROUTES
+// Uses existing: app, User_Login, verifyToken
+// ============================================================
+
+// GET: Retrieve the authenticated user's profile
+// app.get("/profile/me", verifyToken, async (req, res) => {
+//   try {
+//     if (!req.userId) {
+//       return res.status(401).json({
+//         status: "error",
+//         message: "Authenticated user ID is missing."
+//       });
+//     }
+
+//     const user = await User_Login
+//       .findById(req.userId)
+//       .select("-password -__v");
+
+//     if (!user) {
+//       return res.status(404).json({
+//         status: "error",
+//         message: "User profile was not found."
+//       });
+//     }
+
+//     return res.status(200).json({
+//       status: "ok",
+//       user
+//     });
+//   } catch (error) {
+//     console.error("GET /profile/me:", error);
+
+//     return res.status(500).json({
+//       status: "error",
+//       message: "Failed to load profile."
+//     });
+//   }
+// });
+
+
+// PUT: Update the authenticated user's own profile
+// app.put("/profile/me", verifyToken, async (req, res) => {
+//   try {
+//     if (!req.userId) {
+//       return res.status(401).json({
+//         status: "error",
+//         message: "Authenticated user ID is missing."
+//       });
+//     }
+
+//     // Only fields present in the SignUp schema and allowed
+//     // for profile editing can be changed here.
+//     const allowedFields = [
+//       "fname",
+//       "lname",
+//       "email",
+//       "birthDate",
+//       "gender",
+//       "Phone"
+//     ];
+
+//     const updates = {};
+
+//     for (const field of allowedFields) {
+//       if (
+//         Object.prototype.hasOwnProperty.call(
+//           req.body || {},
+//           field
+//         )
+//       ) {
+//         let value = req.body[field];
+
+//         if (typeof value === "string") {
+//           value = value.trim();
+//         }
+
+//         if (field === "birthDate" && value === "") {
+//           value = null;
+//         }
+
+//         updates[field] = value;
+//       }
+//     }
+
+//     if (Object.keys(updates).length === 0) {
+//       return res.status(400).json({
+//         status: "error",
+//         message: "No profile changes were provided."
+//       });
+//     }
+
+//     const updatedUser = await User_Login.findByIdAndUpdate(
+//       req.userId,
+//       { $set: updates },
+//       {
+//         new: true,
+//         runValidators: true
+//       }
+//     ).select("-password -__v");
+
+//     if (!updatedUser) {
+//       return res.status(404).json({
+//         status: "error",
+//         message: "User profile was not found."
+//       });
+//     }
+
+//     return res.status(200).json({
+//       status: "ok",
+//       message: "Profile updated successfully.",
+//       user: updatedUser
+//     });
+//   } catch (error) {
+//     console.error("PUT /profile/me:", error);
+
+//     if (error.code === 11000) {
+//       return res.status(409).json({
+//         status: "error",
+//         message: "This email address is already registered."
+//       });
+//     }
+
+//     if (
+//       error.name === "ValidationError" ||
+//       error.name === "CastError"
+//     ) {
+//       return res.status(400).json({
+//         status: "error",
+//         message: "Please check your profile information."
+//       });
+//     }
+
+//     return res.status(500).json({
+//       status: "error",
+//       message: "Failed to update profile."
+//     });
+//   }
+// });
+
+// ============================================================
+// USER PROFILE + CHANGE PASSWORD ROUTES
+// Existing dependencies required:
+// app, User_Login, verifyToken, bcrypt, writeAuditLog
+// ============================================================
+
+
+// ============================================================
+// 1. GET AUTHENTICATED USER ID
+// ============================================================
+
+function getAuthenticatedUserId(req) {
+  return (
+    req.userId ||
+    req.user?.userId ||
+    req.user?._id ||
+    req.decoded?.userId ||
+    req.decoded?.id ||
+    req.decoded?._id ||
+    null
+  );
+}
+
+
+// ============================================================
+// 2. RETURN SAFE USER PROFILE
+// Never return the password or password hash.
+// ============================================================
+
+function buildSafeUserProfile(user) {
+  return {
+    _id: user._id,
+    userId: String(user._id),
+    fname: user.fname || "",
+    lname: user.lname || "",
+    email: user.email || "",
+    birthDate: user.birthDate || "",
+    gender: user.gender || "",
+    Phone: user.Phone || user.phone || "",
+    userType: user.userType || ""
+  };
+}
+
+
+// ============================================================
+// 3. GET CURRENT USER PROFILE
+// GET /profile/me
+// ============================================================
+
+app.get("/profile/me", verifyToken, async (req, res) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        status: "error",
+        message: "Authentication is required."
+      });
+    }
+
+    const user = await User_Login.findById(userId).select(
+      "fname lname email birthDate gender Phone phone userType"
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "User account was not found."
+      });
+    }
+
+    return res.json({
+      status: "ok",
+      user: buildSafeUserProfile(user)
+    });
+
+  } catch (error) {
+    console.error("GET /profile/me error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Unable to load the user profile."
+    });
+  }
+});
+
+
+// ============================================================
+// 4. UPDATE USER PROFILE
+// PUT /profile/me
+// Password and userType cannot be changed through this endpoint.
+// ============================================================
+
+app.put("/profile/me", verifyToken, async (req, res) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        status: "error",
+        message: "Authentication is required."
+      });
+    }
+
+    const {
+      fname,
+      lname,
+      email,
+      birthDate,
+      gender,
+      Phone
+    } = req.body;
+
+    const cleanFname = String(fname ?? "").trim();
+    const cleanLname = String(lname ?? "").trim();
+    const cleanEmail = String(email ?? "").trim().toLowerCase();
+
+    if (!cleanFname || !cleanLname || !cleanEmail) {
+      return res.status(400).json({
+        status: "error",
+        message: "First name, last name, and email are required."
+      });
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(cleanEmail)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please provide a valid email address."
+      });
+    }
+
+    // Prevent another account from using this email.
+    const duplicateEmail = await User_Login.findOne({
+      email: cleanEmail,
+      _id: { $ne: userId }
+    }).select("_id");
+
+    if (duplicateEmail) {
+      return res.status(409).json({
+        status: "error",
+        message: "That email address is already used by another account."
+      });
+    }
+
+    const user = await User_Login.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        status: "error",
+        message: "User account was not found."
+      });
+    }
+
+    // Update permitted fields only.
+    user.fname = cleanFname;
+    user.lname = cleanLname;
+    user.email = cleanEmail;
+
+    user.birthDate = birthDate
+      ? new Date(birthDate)
+      : undefined;
+
+    user.gender = String(gender ?? "").trim();
+
+    // Preserve the phone field spelling used by the schema.
+    const existingFields = user.toObject();
+
+    if (
+      Object.prototype.hasOwnProperty.call(existingFields, "Phone") ||
+      !Object.prototype.hasOwnProperty.call(existingFields, "phone")
+    ) {
+      user.Phone = String(Phone ?? "").trim();
+    } else {
+      user.phone = String(Phone ?? "").trim();
+    }
+
+    await user.save();
+
+    // Record the successful profile update.
+    if (typeof writeAuditLog === "function") {
+      await writeAuditLog(req, {
+        actor: user,
+        action: "User profile updated",
+        details:
+          "Updated personal profile fields: first name, last name, email, birth date, gender, and phone.",
+        entityType: "User",
+        entityId: String(user._id),
+        outcome: "success"
+      });
+    }
+
+    return res.json({
+      status: "ok",
+      message: "Profile updated successfully.",
+      user: buildSafeUserProfile(user)
+    });
+
+  } catch (error) {
+    console.error("PUT /profile/me error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Unable to update the user profile."
+    });
+  }
+});
+
+
+// ============================================================
+// 5. CHANGE PASSWORD
+// PUT /profile/change-password
+// ============================================================
+
+app.put(
+  "/profile/change-password",
+  verifyToken,
+  async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+
+      if (!userId) {
+        return res.status(401).json({
+          status: "error",
+          message: "Authentication is required."
+        });
+      }
+
+      const {
+        currentPassword,
+        newPassword,
+        confirmPassword
+      } = req.body;
+
+      if (
+        !currentPassword ||
+        !newPassword ||
+        !confirmPassword
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Complete all password fields."
+        });
+      }
+
+      if (newPassword !== confirmPassword) {
+        return res.status(400).json({
+          status: "error",
+          message: "The new password and confirmation do not match."
+        });
+      }
+
+      // Validate password strength.
+      if (
+        String(newPassword).length < 8 ||
+        !/[A-Z]/.test(newPassword) ||
+        !/[a-z]/.test(newPassword) ||
+        !/[0-9]/.test(newPassword)
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Use at least 8 characters, including uppercase and lowercase letters and a number."
+        });
+      }
+
+      const user = await User_Login.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          status: "error",
+          message: "User account was not found."
+        });
+      }
+
+      if (!user.password) {
+        return res.status(500).json({
+          status: "error",
+          message:
+            "The account password field is not configured as expected. Check your user model."
+        });
+      }
+
+      // Verify the current password.
+      const currentPasswordMatches = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
+
+      if (!currentPasswordMatches) {
+        return res.status(400).json({
+          status: "error",
+          message: "The current password is incorrect."
+        });
+      }
+
+      if (currentPassword === newPassword) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Your new password must be different from your current password."
+        });
+      }
+
+      // Hash the new password.
+      user.password = await bcrypt.hash(newPassword, 12);
+
+      await user.save();
+
+      // Record the successful password change.
+      if (typeof writeAuditLog === "function") {
+        await writeAuditLog(req, {
+          actor: user,
+          action: "User password changed",
+          details:
+            "The authenticated user changed their account password.",
+          entityType: "User",
+          entityId: String(user._id),
+          outcome: "success"
+        });
+      }
+
+      return res.json({
+        status: "ok",
+        message: "Password changed successfully."
+      });
+
+    } catch (error) {
+      console.error(
+        "PUT /profile/change-password error:",
+        error
+      );
+
+      return res.status(500).json({
+        status: "error",
+        message: "Unable to change the password."
+      });
+    }
+  }
+);
+
+// ==========================================
+// USER PROFILE & PASSWORD BACKEND ENDPOINTS
+// ==========================================
+
+// 1. UPDATE USER PROFILE (Name, Email, Link URL)
+app.put('/update-profile/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fname, lname, email, userUrl } = req.body;
+
+    const updatedUser = await User_Login.findByIdAndUpdate(
+      id,
+      { fname, lname, email, userUrl },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+
+    res.json({ status: "ok", message: "Profile updated successfully", data: updatedUser });
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    res.status(500).json({ status: "error", message: "Failed to update profile" });
+  }
+});
+
+// 2. CHANGE USER PASSWORD
+app.put('/change-password/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User_Login.findById(id);
+    if (!user) {
+      return res.status(404).json({ status: "error", message: "User not found" });
+    }
+
+    // NOTE: If you use bcrypt to hash passwords, verify currentPassword here:
+    // const isMatch = await bcrypt.compare(currentPassword, user.password);
+    // if (!isMatch) return res.status(400).json({ status: "error", message: "Incorrect current password" });
+    // user.password = await bcrypt.hash(newPassword, 10);
+
+    // Standard check if plaintext (or adjust according to your auth setup):
+    if (user.password !== currentPassword) {
+      return res.status(400).json({ status: "error", message: "Incorrect current password" });
+    }
+
+    user.password = newPassword; // Replace with hashed password in production
+    await user.save();
+
+    res.json({ status: "ok", message: "Password updated successfully" });
+  } catch (error) {
+    console.error("Error changing password:", error);
+    res.status(500).json({ status: "error", message: "Failed to change password" });
+  }
+});
   // app.post("/login-user", async (req, res) => {
   //   const { email, password } = req.body;
   
@@ -1242,6 +2029,27 @@ app.post("/login-user", async (req, res) => {
         expiresIn: "15m"
       }
     );
+    // =====================================================
+    // 4. AUDIT LOG: SUCCESSFUL LOGIN
+    // Insert after successful password verification.
+    // =====================================================
+
+    await writeAuditLog(req, {
+      actor: user,
+
+      action: "User signed in",
+
+      details:
+        `${user.fname || ""} ${user.lname || ""}`.trim() +
+        " signed in successfully.",
+
+      entityType: "User",
+
+      entityId: user._id,
+
+      outcome: "success"
+    });
+
 
     // Return complete user information
     return res.status(200).json({
@@ -1490,12 +2298,10 @@ app.post("/assign-research", async (req, res) => {
           proposal.Title || "Untitled Proposal",
 
         studentId:
-           proposal.studentID ||
-          "",
+          proposal.studentID || "",
 
         studentFname:
-          proposal.PI ||
-          "",
+          proposal.PI || "",
 
         status: "Assigned",
 
@@ -1539,6 +2345,26 @@ app.post("/assign-research", async (req, res) => {
           new Date(),
       }
     );
+
+    // ==========================================
+    // AUDIT LOG: RESEARCH ASSIGNED
+
+    // ==========================================
+
+    await writeAuditLog(req, {
+      action: "Research proposal assigned",
+
+      details:
+        `Assigned research proposal "${proposal.Title || "Untitled Proposal"}" ` +
+        `to researcher ${researchUser.fname || ""} ${researchUser.lname || ""}`.trim() +
+        ` (${researchUser.email || "No email"}).`,
+
+      entityType: "Research Proposal",
+
+      entityId: String(proposal._id),
+
+      outcome: "success",
+    });
 
     // ==========================================
     // RESPONSE
@@ -1664,10 +2490,13 @@ app.put("/research-assignment-status/:id", async (req, res) => {
     } = req.body;
 
     const allowedStatuses = [
-      "Pending",
       "Assigned",
-      "Under Review",
-      "Completed"
+      "Pending",
+      "underReview",
+      "Accepted",
+      "Rejected",
+      "completed",
+      "unknown"
     ];
 
     if (!allowedStatuses.includes(assignmentStatus)) {
@@ -1683,7 +2512,7 @@ app.put("/research-assignment-status/:id", async (req, res) => {
       assignmentStatus
     };
 
-    if (assignmentStatus === "Completed") {
+    if (assignmentStatus === "completed") {
       updateData.completedAt = new Date();
     }
 
@@ -1884,10 +2713,13 @@ app.put(
       }
 
       const allowedStatuses = [
-        "Pending",
-        "Assigned",
-        "Under Review",
-        "Completed",
+      "Assigned",
+      "Pending",
+      "underReview",
+      "Accepted",
+      "Rejected",
+      "completed",
+      "unknown"
       ];
 
       if (!allowedStatuses.includes(assignmentStatus)) {
@@ -2153,6 +2985,7 @@ app.get(
 //   }
 // );
 
+
 app.put("/researcher-assignment-status/:proposalId", async (req, res) => {
   try {
     const { proposalId } = req.params;
@@ -2161,51 +2994,48 @@ app.put("/researcher-assignment-status/:proposalId", async (req, res) => {
     if (!proposalId) {
       return res.status(400).json({
         status: "error",
-        message: "Proposal ID is required"
+        message: "Proposal ID is required",
       });
     }
 
     if (!researcherId) {
       return res.status(400).json({
         status: "error",
-        message: "Researcher ID is required"
-      });
-    }
-
-    if (!assignmentStatus) {
-      return res.status(400).json({
-        status: "error",
-        message: "Assignment status is required"
+        message: "Researcher ID is required",
       });
     }
 
     const allowedStatuses = [
-      "Assigned",
-      "Under Review",
-      "Completed"
+    "Assigned",
+    "Pending",
+    "underReview",
+    "Accepted",
+    "Rejected",
+    "completed",
+    "unknown"
     ];
 
     if (!allowedStatuses.includes(assignmentStatus)) {
       return res.status(400).json({
         status: "error",
-        message: "Invalid assignment status"
+        message: "Invalid assignment status",
       });
     }
 
     // Find the assignment for this researcher and proposal
     const assignment = await ResearchAssignmentModel.findOne({
-      proposalId: proposalId,
-      researchUserId: researcherId
+      proposalId,
+      researchUserId: researcherId,
     });
 
     if (!assignment) {
       return res.status(404).json({
         status: "error",
-        message: "Research assignment not found"
+        message: "Research assignment not found",
       });
     }
 
-    // Update assignment status
+    // Update the assignment status
     assignment.status = assignmentStatus;
 
     if (assignmentStatus === "Completed") {
@@ -2219,26 +3049,25 @@ app.put("/researcher-assignment-status/:proposalId", async (req, res) => {
 
     if (research) {
       research.assignmentStatus = assignmentStatus;
-
       await research.save();
     }
 
     return res.status(200).json({
       status: "ok",
       message: "Assignment status updated successfully",
-      data: assignment
+      data: assignment,
     });
-
   } catch (error) {
     console.error("Status update error:", error);
 
     return res.status(500).json({
       status: "error",
       message: "Failed to update assignment status",
-      error: error.message
+      error: error.message,
     });
   }
 });
+
    
   /*****************************************************
  *   ==== LOG HISTORY HANDLING ====
@@ -2247,7 +3076,7 @@ app.put("/researcher-assignment-status/:proposalId", async (req, res) => {
 async function addLog(action, details) {
   try {
     // Save in MongoDB
-    await new Log({ action, details }).save();
+    await new AuditLog({ action, details }).save();
 
     // Save in file system
     const logLine = `${new Date().toISOString()} | ${action} | ${details}\n`;
@@ -2270,7 +3099,7 @@ app.post("/api/data", async (req, res) => {
 });
 
 app.get("/api/logs", async (req, res) => {
-  const logs = await Log.find().sort({ createdAt: -1 }).limit(20);
+  const logs = await AuditLog.find({}).sort({ createdAt: -1 });
   res.json(logs);
 });
 ///////////////////////////////////////////////new with log text/////////////
@@ -2283,7 +3112,7 @@ app.use(async (req, res, next) => {
 
   // Save to DB
   try {
-    await Log.create({
+    await AuditLog.create({
       action: `${req.method} ${req.url}`,
       user: req.headers["x-user"] || "guest",
     });
@@ -2306,7 +3135,7 @@ app.post("/api/doSomething", (req, res) => {
 
 // ✅ Get logs from DB
 app.get("/api/logs", async (req, res) => {
-  const logs = await Log.find().sort({ createdAt: -1 });
+  const logs = await AuditLog.find({}).sort({ createdAt: -1 });
   res.json(logs);
 });
 
@@ -2318,6 +3147,263 @@ app.get("/api/logs/file", (req, res) => {
   });
 });
 
+
+// ============================================================
+// 2. FIND THE EXISTING USER MODEL
+// Change this if your registered model has another name.
+// ============================================================
+
+const USER_MODEL =
+  mongoose.models.User ||
+  mongoose.models.Users ||
+  mongoose.models.user ||
+  null;
+
+
+// ============================================================
+// 3. GET THE USER WHO PERFORMED THE ACTION
+// verifyToken should set req.userId or req.user.
+// ============================================================
+
+async function getAuditActor(req, actorOverride = null) {
+  if (actorOverride) {
+    return actorOverride;
+  }
+
+  if (
+    req?.user &&
+    (req.user.fname || req.user.lname || req.user.email)
+  ) {
+    return req.user;
+  }
+
+  const userId =
+    req?.userId ||
+    req?.user?._id ||
+    req?.decoded?.userId ||
+    req?.decoded?.id ||
+    req?.decoded?._id;
+
+  if (!userId || !USER_MODEL) {
+    return null;
+  }
+
+  try {
+    return await USER_MODEL.findById(userId)
+      .select("fname lname email userType")
+      .lean();
+  } catch (error) {
+    console.error(
+      "Could not identify audit actor:",
+      error.message
+    );
+
+    return null;
+  }
+}
+
+
+// ============================================================
+// 4. WRITE AN AUDIT LOG
+// Call this AFTER the actual business action succeeds.
+// ============================================================
+
+async function writeAuditLog(
+  req,
+  {
+    actor = null,
+    action,
+    details,
+    entityType = "",
+    entityId = "",
+    outcome = "success"
+  } = {}
+) {
+  try {
+    if (!action || !details) {
+      console.warn(
+        "Audit log skipped: action and details are required."
+      );
+
+      return null;
+    }
+
+    const user = await getAuditActor(req, actor);
+
+    const fname = String(user?.fname || "").trim();
+    const lname = String(user?.lname || "").trim();
+
+    const actorName =
+      `${fname} ${lname}`.trim() ||
+      user?.name ||
+      user?.email ||
+      "Unknown user";
+
+    const actorId =
+      user?._id ||
+      user?.id ||
+      req?.userId ||
+      req?.user?._id ||
+      null;
+
+    const forwardedFor =
+      req?.headers?.["x-forwarded-for"];
+
+    const ipAddress = String(
+      forwardedFor ||
+      req?.ip ||
+      req?.socket?.remoteAddress ||
+      ""
+    )
+      .split(",")[0]
+      .trim();
+
+    const logRecord = {
+      actorId,
+      fname,
+      lname,
+      actorName,
+
+      email: String(user?.email || ""),
+
+      userType: String(
+        user?.userType ||
+        user?.role ||
+        ""
+      ),
+
+      action: String(action).trim(),
+
+      details: String(details).trim(),
+
+      entityType: String(entityType || ""),
+
+      entityId: entityId
+        ? String(entityId)
+        : "",
+
+      outcome:
+        outcome === "failure"
+          ? "failure"
+          : "success",
+
+      ipAddress,
+
+      userAgent: String(
+        req?.get?.("user-agent") || ""
+      )
+    };
+
+    return await AuditLog.create(logRecord);
+
+  } catch (error) {
+    // Logging failure should not undo an otherwise successful operation.
+    console.error(
+      "Failed to write audit log:",
+      error.message
+    );
+
+    return null;
+  }
+}
+
+
+// ============================================================
+// 5. GET AUDIT LOGS
+// Add after verifyToken has been declared.
+// Only authenticated Admin users can access this endpoint.
+// ============================================================
+
+app.get("/api/logs", verifyToken, async (req, res) => {
+  try {
+    const actor = await getAuditActor(req);
+
+    const role =
+      actor?.userType ||
+      req.userType ||
+      req.user?.userType ||
+      "";
+
+    if (!actor || role !== "Admin") {
+      return res.status(actor ? 403 : 401).json({
+        status: "error",
+
+        message: actor
+          ? "Only administrators can view audit logs."
+          : "Unable to identify the signed-in user."
+      });
+    }
+
+    const page = Math.max(
+      1,
+      Number.parseInt(req.query.page, 10) || 1
+    );
+
+    const limit = Math.min(
+      500,
+      Math.max(
+        1,
+        Number.parseInt(req.query.limit, 10) || 100
+      )
+    );
+
+    const search = String(
+      req.query.search || ""
+    ).trim();
+
+    const filter = {};
+
+    if (search) {
+      const safeSearch = search.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+      const regex = new RegExp(safeSearch, "i");
+
+      filter.$or = [
+        { actorName: regex },
+        { fname: regex },
+        { lname: regex },
+        { email: regex },
+        { action: regex },
+        { details: regex },
+        { entityType: regex },
+        { entityId: regex }
+      ];
+    }
+
+    const [logs, total] = await Promise.all([
+      AuditLog.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+
+      AuditLog.countDocuments(filter)
+    ]);
+
+    return res.json({
+      status: "ok",
+      data: logs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+
+  } catch (error) {
+    console.error(
+      "GET /api/logs error:",
+      error
+    );
+
+    return res.status(500).json({
+      status: "error",
+      message: "Unable to fetch audit logs."
+    });
+  }
+});
     /*****************************************************
  *   ==== RESERCH RECIEVED CALCULATION FORMULA====Function to add working days (skipping Saturday & Sunday)
  *****************************************************/
@@ -3189,10 +4275,28 @@ app.get("/Gete-User", async (req, res) => {
     });
   } catch (error) {}
 });
-
+     
 app.get("/Gete-Admin", async (req, res) => {
   try {
     const singleMeasel= User_Login.find().or([{userType:"Admin"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(singleMeasel)
+    });
+  } catch (error) {}
+});
+
+app.get("/Gete-Secretary", async (req, res) => {
+  try {
+    const singleMeasel= User_Login.find().or([{userType:"Secretary"}]) .countDocuments().then((data) => {
+      res.send({ status: "ok", data: data });
+      console.log(singleMeasel)
+    });
+  } catch (error) {}
+});
+
+app.get("/Gete-Chairperson", async (req, res) => {
+  try {
+    const singleMeasel= User_Login.find().or([{userType:"Chairperson"}]) .countDocuments().then((data) => {
       res.send({ status: "ok", data: data });
       console.log(singleMeasel)
     });
@@ -4373,7 +5477,57 @@ app.get('/fetching-Rech', async(req, res) =>{
     })
     
       /////////delet geting all news//////////////////
-      app.get("/RECH-Proposal", async (req, res) => {
+     app.get("/RECH-Proposal", async (req, res) => {
+  try {
+    const allUser = await ResearchMondel.aggregate([
+      // LIFO: newest proposals first
+      {
+        $sort: { _id: -1 },
+      },
+
+      // Keep only one proposal for each unique title
+      {
+        $group: {
+          _id: {
+            $toLower: {
+              $trim: {
+                input: { $ifNull: ["$Title", ""] },
+              },
+            },
+          },
+          proposal: { $first: "$$ROOT" },
+        },
+      },
+
+      // Return the original proposal document
+      {
+        $replaceRoot: {
+          newRoot: "$proposal",
+        },
+      },
+
+      // Display newest unique proposals first
+      {
+        $sort: { _id: -1 },
+      },
+    ]);
+
+    res.send({
+      status: "ok",
+      data: allUser,
+    });
+  } catch (error) {
+    console.error("Error fetching unique research proposals:", error);
+
+    res.status(500).send({
+      status: "error",
+      message: "Failed to fetch research proposals",
+    });
+  }
+});
+          
+      /////////delet geting all news//////////////////
+      app.get("/RECH-Approv", async (req, res) => {
         try {
           const allUser = await ResearchMondel.find({});
           res.send({ status: "ok", data: allUser });
@@ -4693,6 +5847,26 @@ app.get("/Esendstudent", async (req, res) => {
       .limit(limit);
 
     console.log("Student confirmation records:", result);
+
+    // ============================================
+    // AUDIT LOG: STUDENT CONFIRMATION RECORDS VIEWED
+    // ============================================
+
+    await writeAuditLog(req, {
+      action: "Student confirmation records viewed",
+
+      details:
+        `Viewed student confirmation records for student ID ${userId}. ` +
+        `Records returned: ${result.length}. ` +
+        `Total matching records: ${total}. ` +
+        `Page: ${page}.`,
+
+      entityType: "Student Confirmation",
+
+      entityId: String(userId),
+
+      outcome: "success",
+    });
 
     res.json({
       status: "ok",
@@ -5273,10 +6447,31 @@ app.post("/DataCollectionP", DataCollectionPupload.single("file"), async (req, r
 
   const DStart = req.body.DStart;
   const DTermination = req.body.DTermination;
-  
+
 
   try {
-    await DataCollectionPMondel.create({Name:Name,PhonePI:PhonePI,email:email,title:title,NUniversity:NUniversity,DataC:DataC,StudyA1:StudyA1,NameContactP1:NameContactP1,CPhone1:CPhone1,AdditionalDC:AdditionalDC,StudyA2:StudyA2,NameContactP2:NameContactP2,CPhone2:CPhone2,Additiona3DC:Additiona3DC,StudyA3:StudyA3,NameContactP3:NameContactP3,CPhone3:CPhone3,Additiona4DC:Additiona4DC,StudyA4:StudyA4,NameContactP4:NameContactP4,CPhone4:CPhone4,Additiona5DC:Additiona5DC,StudyA5:StudyA5,NameContactP5:NameContactP5,CPhone5:CPhone5, DStart:DStart,DTermination:DTermination});
+    const savedDataCollection = await DataCollectionPMondel.create({Name:Name,PhonePI:PhonePI,email:email,title:title,NUniversity:NUniversity,DataC:DataC,StudyA1:StudyA1,NameContactP1:NameContactP1,CPhone1:CPhone1,AdditionalDC:AdditionalDC,StudyA2:StudyA2,NameContactP2:NameContactP2,CPhone2:CPhone2,Additiona3DC:Additiona3DC,StudyA3:StudyA3,NameContactP3:NameContactP3,CPhone3:CPhone3,Additiona4DC:Additiona4DC,StudyA4:StudyA4,NameContactP4:NameContactP4,CPhone4:CPhone4,Additiona5DC:Additiona5DC,StudyA5:StudyA5,NameContactP5:NameContactP5,CPhone5:CPhone5, DStart:DStart,DTermination:DTermination});
+
+    // ==========================================
+    // AUDIT LOG: DATA COLLECTION APPLICATION
+    // ==========================================
+
+    await writeAuditLog(req, {
+      action: "Data collection application submitted",
+
+      details:
+        `Submitted data collection application "${title || "Untitled application"}". ` +
+        `Applicant/PI: ${Name || "Not provided"}. ` +
+        `University: ${NUniversity || "Not provided"}. ` +
+        `Study area: ${DataC || "Not provided"}.`,
+
+      entityType: "Data Collection Application",
+
+      entityId: String(savedDataCollection._id),
+
+      outcome: "success"
+    });
+
     res.send({ status: "ok" });
   } catch (error) {
     res.json({ status: error });
@@ -5386,7 +6581,7 @@ app.post("/DataCollectionC", DataCollectionCupload.array("files", 10), async (re
     }
  const {Name,PhonePI,email,title,NUniversity,Nadvisor,phone,PIemail,Grade,submitted} = req.body;
   // const {originalname} = req.file;
-  
+
 
   const uploadedFiles = [];
 
@@ -5418,6 +6613,29 @@ app.post("/DataCollectionC", DataCollectionCupload.array("files", 10), async (re
       // ✅ Remove file from local storage after uploading
       fs.unlinkSync(file.path);
     }
+
+    // ==========================================
+    // AUDIT LOG: DATA COLLECTION CONFIRMATION
+    // ==========================================
+
+    await writeAuditLog(req, {
+      action: "Data collection confirmation submitted",
+
+      details:
+        `Submitted data collection confirmation "${title || "Untitled submission"}". ` +
+        `Applicant: ${Name || "Not provided"}. ` +
+        `University: ${NUniversity || "Not provided"}. ` +
+        `Grade: ${Grade || "Not provided"}. ` +
+        `Number of uploaded files: ${uploadedFiles.length}.`,
+
+      entityType: "Data Collection Confirmation",
+
+      entityId: uploadedFiles
+        .map(file => String(file._id))
+        .join(", "),
+
+      outcome: "success"
+    });
 
    res.send({ status: "ok" });
   } catch (error) {
@@ -15508,7 +16726,7 @@ app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
       });
     };
 
-  
+
  const results = [];
   for (let file of req.files) {
   const uploaded = await streamUpload(file.path);
@@ -15560,12 +16778,208 @@ app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
       results.push(savedFile);
     }
 
+    // ==========================================
+    // AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
+    // ==========================================
+
+    await writeAuditLog(req, {
+      action: "Research proposal submitted",
+
+      details:
+        `Submitted research proposal "${Title || "Untitled Proposal"}". ` +
+        `Student ID: ${studentID || "Not provided"}. ` +
+        `College: ${NCollege || "Not provided"}. ` +
+        `Principal Investigator: ${PI || "Not provided"}. ` +
+        `Number of uploaded files: ${req.files.length}.`,
+
+      entityType: "Research Proposal",
+
+      entityId: results
+        .map((item) => String(item._id))
+        .join(", "),
+
+      outcome: "success",
+    });
+
    res.json({ message: "Uploaded & saved successfully", files: results });
   } catch (err) {
     console.error("❌ Upload error (server):", err);
     res.status(500).json({ message: "Upload failed", error: err.message });
   }
 });
+
+// ==========================================
+// AUTHENTICATION MIDDLEWARE
+// ==========================================
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ message: "Authentication token required." });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET || "YOUR_SECRET_KEY_HERE", (err, user) => {
+    if (err) return res.status(403).json({ message: "Invalid or expired token." });
+    req.user = user;
+    next();
+  });
+};
+
+// ==========================================
+// RESEARCH PROPOSAL API ROUTES
+// ==========================================
+
+// GET /api/research/my — Fetch all research proposals owned by the authenticated student
+app.get("/api/research/my", authenticateToken, async (req, res) => {
+  try {
+    const studentUserId = req.user.userId || req.user.id || req.user.studentID;
+    const studentEmail = req.user.email;
+
+    const query = {
+      $or: [
+        { studentID: studentUserId },
+        { email: studentEmail },
+        { user: studentUserId }
+      ]
+    };
+
+    const applications = await ResearchMondel.find(query).sort({ updatedAt: -1, createdAt: -1 });
+    return res.status(200).json(applications);
+  } catch (error) {
+    console.error("Error fetching user proposals:", error);
+    return res.status(500).json({ message: "Failed to load your research applications." });
+  }
+});
+
+// GET /api/research/:id — Fetch a single proposal ensuring student ownership
+app.get("/api/research/:id", authenticateToken, async (req, res) => {
+  try {
+    const studentUserId = req.user.userId || req.user.id || req.user.studentID;
+    const studentEmail = req.user.email;
+    const proposalId = req.params.id;
+
+    const proposal = await ResearchMondel.findById(proposalId);
+    if (!proposal) {
+      return res.status(404).json({ message: "Research proposal application not found." });
+    }
+
+    const isOwner =
+      String(proposal.studentID) === String(studentUserId) ||
+      String(proposal.email) === String(studentEmail) ||
+      String(proposal.user) === String(studentUserId);
+
+    if (!isOwner) {
+      return res.status(403).json({ message: "Access denied: You can only view your own applications." });
+    }
+
+    return res.status(200).json({ application: proposal });
+  } catch (error) {
+    console.error("Error fetching proposal:", error);
+    return res.status(500).json({ message: "Server error fetching the application details." });
+  }
+});
+
+// PUT /api/research/:id — Update an existing proposal with document replacement support
+app.put(
+  "/api/research/:id",
+  authenticateToken,
+  upload.array("replacementFiles"),
+  async (req, res) => {
+    try {
+      const studentUserId = req.user.userId || req.user.id || req.user.studentID;
+      const studentEmail = req.user.email;
+      const proposalId = req.params.id;
+
+      const proposal = await ResearchMondel.findById(proposalId);
+      if (!proposal) {
+        return res.status(404).json({ message: "Research proposal not found." });
+      }
+
+      const isOwner =
+        String(proposal.studentID) === String(studentUserId) ||
+        String(proposal.email) === String(studentEmail) ||
+        String(proposal.user) === String(studentUserId);
+
+      if (!isOwner) {
+        return res.status(403).json({ message: "Access denied: You can only update your own applications." });
+      }
+
+      const textFields = [
+        "NCollege", "Department", "TDepartment", "StudyF", "Nadvisor", "email", "phone",
+        "PI", "PIPhone", "PIemail", "Title", "ConductS", "Rmethods", "Study", "Design",
+        "TDesign", "geographicA", "TGeographicA", "Slocation", "Gender", "TGender",
+        "populations", "MicroD", "Eelectronically", "Tools", "Tcollection", "TTcollection",
+        "Budget", "Geocoordinate", "Groups", "Dsharing", "Reasons", "NewColl"
+      ];
+
+      textFields.forEach((field) => {
+        if (req.body[field] !== undefined) {
+          proposal[field] = req.body[field];
+        }
+      });
+
+      if (req.body.FocusA) {
+        try { proposal.FocusA = JSON.parse(req.body.FocusA); } catch (_) { proposal.FocusA = req.body.FocusA; }
+      }
+      if (req.body.selectedChoices) {
+        try { proposal.selectedChoices = JSON.parse(req.body.selectedChoices); } catch (_) { proposal.selectedChoices = req.body.selectedChoices; }
+      }
+      if (req.body.SPeriodB) proposal.SPeriodB = new Date(req.body.SPeriodB);
+      if (req.body.SPeriodE) proposal.SPeriodE = new Date(req.body.SPeriodE);
+
+      const replacementDocumentIdsRaw = req.body.replacementDocumentIds;
+      let replacementDocumentIds = [];
+      if (replacementDocumentIdsRaw) {
+        try {
+          replacementDocumentIds = JSON.parse(replacementDocumentIdsRaw);
+        } catch (_) {
+          replacementDocumentIds = Array.isArray(replacementDocumentIdsRaw)
+            ? replacementDocumentIdsRaw
+            : [replacementDocumentIdsRaw];
+        }
+      }
+
+      const uploadedReplacements = req.files || [];
+      let currentDocuments = proposal.documents || proposal.files || [];
+
+      replacementDocumentIds.forEach((docIdToReplace, idx) => {
+        const newUploadedFile = uploadedReplacements[idx];
+        if (newUploadedFile) {
+          const docIndex = currentDocuments.findIndex(
+            (d) => String(d._id || d.id) === String(docIdToReplace)
+          );
+          const newDocObj = {
+            _id: docIdToReplace,
+            originalName: newUploadedFile.originalname,
+            filename: newUploadedFile.filename,
+            path: newUploadedFile.path,
+            url: `/uploads/${newUploadedFile.filename}`,
+            updatedAt: new Date()
+          };
+          if (docIndex !== -1) {
+            currentDocuments[docIndex] = { ...currentDocuments[docIndex], ...newDocObj };
+          } else {
+            currentDocuments.push(newDocObj);
+          }
+        }
+      });
+
+      proposal.documents = currentDocuments;
+      proposal.updatedAt = new Date();
+
+      await proposal.save();
+
+      return res.status(200).json({
+        message: "Research application updated successfully.",
+        application: proposal
+      });
+    } catch (error) {
+      console.error("Error updating proposal:", error);
+      return res.status(500).json({ message: "Failed to update proposal application." });
+    }
+  }
+);
 
 //////Homepage LabGuidlines/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
