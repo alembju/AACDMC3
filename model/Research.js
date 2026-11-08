@@ -6,6 +6,7 @@ const ResearchSchema = new mongoose.Schema({
     Department: String,
     TDepartment: String,
     StudyF: String,
+    TStudyF: String,
     Nadvisor: String,
     email: String,
     phone:Number,
@@ -13,7 +14,11 @@ const ResearchSchema = new mongoose.Schema({
     PIPhone:Number,
     PIemail: String,
     Title: String,
-    FocusA: String,
+     FocusA: {
+    type: [String],
+    default: []
+  },
+    TOtherFocusA: String,
     SPeriodB: Date,
     SPeriodE: Date,
     ConductS: String,
@@ -27,14 +32,17 @@ const ResearchSchema = new mongoose.Schema({
     Gender: String,
     TGender: String,
     populations: String,
+    TOtherPopulation: String,
     MicroD: String,
     Eelectronically: String,
     Tools: String,
+    TOtherTools: String,
     Tcollection: String,
     TTcollection: String,
     Budget: String,
     Geocoordinate: String,
     Groups: [String],
+    TOtherGroups: String,
     Dsharing: String,
     selectedChoices: [String],
     Reasons: String,
@@ -87,6 +95,16 @@ const ResearchSchema = new mongoose.Schema({
       type: Date,
       default: null
     },
+
+    studentResponseStatus: {
+        type: String,
+        enum: ["Not commented", "Commented"],
+        default: "Not commented"
+      },
+      studentRespondedAt: {
+        type: Date,
+        default: null
+      },
         createdAt: { type: Date, default: Date.now },  
     },
     {

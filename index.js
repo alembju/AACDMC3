@@ -19,6 +19,7 @@ const session = require("express-session");
 const multer = require("multer");
 const QRCode = require("qrcode");
 const nodemailer = require("nodemailer");
+const { UAParser } = require("ua-parser-js");
 
 dotenv.config();
 
@@ -300,7 +301,8 @@ app.use(cookieParser());
 
 app.use(bodyParser.json());
 
-
+// Only when nginx is your trusted reverse proxy.
+app.set("trust proxy", 1);
 /*****************************************************
  * CORS
  *****************************************************/
@@ -346,7 +348,7 @@ app.use(
     ],
 
     credentials: true,
-
+    exposedHeaders: ["X-Auth-Token"],
     optionsSuccessStatus: 204,
   })
 );
@@ -362,7 +364,226 @@ app.options("*", cors({
 }));
 
 
+/*****************************************************
+ * Audit
+ *****************************************************/
 
+
+const recordAudit = async (
+  req,
+  {
+    action,
+    details,
+    category = "OTHER",
+    status = "success",
+    errorMessage = ""
+  }
+) => {
+  try {
+    // Get authenticated user information
+    let user =
+      req.user ||
+      req.userDetails ||
+      req.auth ||
+      {};
+
+    // Your JWT uses userId, not necessarily _id
+    const userId =
+      user._id ||
+      user.id ||
+      user.userId ||
+      user.user_id ||
+      null;
+
+    // If the authentication middleware only provides JWT data,
+    // retrieve the complete user information from MongoDB.
+    if (userId && (
+      !user.username ||
+      !user.fname ||
+      !user.userType
+    )) {
+      try {
+        const dbUser = await User_Login.findById(userId)
+          .select("fname lname username email userType");
+
+        if (dbUser) {
+          user = {
+            ...user,
+            _id: dbUser._id,
+            fname: dbUser.fname || user.fname,
+            lname: dbUser.lname || user.lname,
+            username: dbUser.username || user.username,
+            email: dbUser.email || user.email,
+            userType: dbUser.userType || user.userType
+          };
+        }
+      } catch (lookupError) {
+        console.error(
+          "Audit user lookup error:",
+          lookupError.message
+        );
+      }
+    }
+
+    const userAgent = req.headers["user-agent"] || "";
+    const parser = new UAParser(userAgent);
+    const result = parser.getResult();
+
+    const forwardedFor = req.headers["x-forwarded-for"];
+
+    const ipAddress =
+      req.ip ||
+      (forwardedFor
+        ? forwardedFor.split(",")[0].trim()
+        : req.socket?.remoteAddress) ||
+      "Unknown";
+
+    const fullName = [
+      user.fname || user.firstName,
+      user.lname || user.lastName
+    ].filter(Boolean).join(" ");
+
+    const username =
+      user.username ||
+      user.name ||
+      user.fullName ||
+      fullName ||
+      user.email ||
+      req.body?.email ||
+      "Unknown User";
+
+    const audit = new AuditLog({
+      userId: userId,
+
+      username: username,
+
+      email:
+        user.email ||
+        req.body?.email ||
+        "",
+
+      userType:
+        user.userType ||
+        user.role ||
+        user.accountType ||
+        "Unknown",
+
+      action,
+
+      details: details || "No additional details",
+
+      category,
+
+      ipAddress,
+
+      macAddress: null,
+
+      device:
+        result.device?.type ||
+        "Desktop",
+
+      browser: [
+        result.browser?.name,
+        result.browser?.version
+      ].filter(Boolean).join(" "),
+
+      operatingSystem: [
+        result.os?.name,
+        result.os?.version
+      ].filter(Boolean).join(" "),
+
+      userAgent,
+
+      method: req.method,
+      endpoint: req.originalUrl,
+
+      status,
+      errorMessage,
+
+      sessionId: req.sessionID || null,
+
+      createdAt: new Date()
+    });
+
+    await audit.save();
+
+    return audit;
+
+  } catch (error) {
+    console.error(
+      "Audit logging error:",
+      error.message
+    );
+
+    return null;
+  }
+};
+
+
+
+// ==========================================
+// AUTHENTICATION MIDDLEWARE
+// ==========================================
+// const authenticateToken = (req, res, next) => {
+//   const authHeader = req.headers["authorization"];
+//   const token = authHeader && authHeader.split(" ")[1];
+
+//   if (!token) {
+//     return res.status(401).json({ message: "Authentication token required." });
+//   }
+
+//   jwt.verify(token, process.env.JWT_SECRET || "YOUR_SECRET_KEY_HERE", (err, user) => {
+//     if (err) return res.status(403).json({ message: "Invalid or expired token." });
+//     req.user = user;
+//     next();
+//   });
+// };
+
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  const token = authHeader?.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({
+      message: "No token provided"
+    });
+  }
+
+  jwt.verify(
+    token,
+    process.env.JWT_SECRET,
+    (err, decoded) => {
+      if (err) {
+        return res.status(403).json({
+          message: "Invalid or expired token"
+        });
+      }
+
+      req.user = decoded;
+      next();
+    }
+  );
+};
+
+
+const authorizeAuditAdmin = (req, res, next) => {
+  const userType = (
+    req.user?.userType ||
+    req.user?.role ||
+    ""
+  ).toLowerCase();
+
+  const allowedRoles = ["admin", "superadmin"];
+
+  if (!allowedRoles.includes(userType)) {
+    return res.status(403).json({
+      message: "Access denied. Administrator only."
+    });
+  }
+
+  next();
+};
 
 // =====================================================
 // API ROUTES
@@ -479,7 +700,7 @@ app.use(
       httpOnly: true,
       secure: true,          // HTTPS on Render, required
       sameSite: "none",      // allow cross-site cookies
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 daysResearchs
     },
     store: MongoStore.create({
       mongoUrl: process.env.MONGO_URL,
@@ -518,10 +739,69 @@ app.use(
 // Use your existing JWT secret consistently.
 // const JWT_SECRET = process.env.JWT_SECRET;
 
+// function verifyToken(req, res, next) {
+//   const authHeader = req.headers.authorization;
+
+//   // Check whether the frontend sent the token.
+//   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+//     return res.status(401).json({
+//       status: "error",
+//       code: "TOKEN_MISSING",
+//       message: "Authentication token is missing. Please sign in."
+//     });
+//   }
+
+//   const token = authHeader.slice(7).trim();
+
+//   try {
+//     // IMPORTANT: Use the same secret that signs the login token.
+//     const decoded = jwt.verify(token, JWT_SECRET);
+
+//     // Read the user ID from the token payload.
+//     const userId =
+//       decoded.userId ||
+//       decoded.id ||
+//       decoded._id ||
+//       decoded.sub;
+
+//     if (!userId) {
+//       return res.status(401).json({
+//         status: "error",
+//         code: "USER_ID_MISSING",
+//         message: "The authentication token does not contain a user ID."
+//       });
+//     }
+
+//     // Make the authenticated identity available to your profile routes.
+//     req.userId = userId;
+//     req.decoded = decoded;
+
+//     req.user = {
+//       userId,
+//       userType: decoded.userType || ""
+//     };
+
+//     next();
+
+//   } catch (error) {
+//     const expired = error.name === "TokenExpiredError";
+
+//     return res.status(401).json({
+//       status: "error",
+//       code: expired ? "TOKEN_EXPIRED" : "TOKEN_INVALID",
+//       message: expired
+//         ? "Your login session has expired. Please sign in again."
+//         : "Your authentication token is invalid. Please sign in again."
+//     });
+//   }
+// }
+
+
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
 
-  // Check whether the frontend sent the token.
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({
       status: "error",
@@ -530,13 +810,36 @@ function verifyToken(req, res, next) {
     });
   }
 
+  
+
   const token = authHeader.slice(7).trim();
 
   try {
-    // IMPORTANT: Use the same secret that signs the login token.
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verify the signature, but manage inactivity using lastActivityAt.
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      ignoreExpiration: true
+    });
 
-    // Read the user ID from the token payload.
+    const now = Date.now();
+
+    // Support existing tokens using their issued time as the initial activity.
+    const lastActivityAt = Number(
+      decoded.lastActivityAt || (decoded.iat ? decoded.iat * 1000 : 0)
+    );
+
+    // Close session after 10 minutes without activity.
+    if (
+      !lastActivityAt ||
+      lastActivityAt > now + 60000 ||
+      now - lastActivityAt >= IDLE_TIMEOUT_MS
+    ) {
+      return res.status(401).json({
+        status: "error",
+        code: "SESSION_IDLE_TIMEOUT",
+        message: "Your session expired after 10 minutes of inactivity. Please sign in again."
+      });
+    }
+
     const userId =
       decoded.userId ||
       decoded.id ||
@@ -551,30 +854,55 @@ function verifyToken(req, res, next) {
       });
     }
 
-    // Make the authenticated identity available to your profile routes.
+    // Remove old JWT timestamps before generating a renewed token.
+    const {
+      iat,
+      exp,
+      nbf,
+      lastActivityAt: oldActivity,
+      ...userPayload
+    } = decoded;
+
+    // Refresh the session for another 10 minutes.
+    const refreshedToken = jwt.sign(
+      {
+        ...userPayload,
+        lastActivityAt: now
+      },
+      JWT_SECRET,
+      { expiresIn: "10m" }
+    );
+
+    // Send the refreshed token to React.
+    res.setHeader("X-Auth-Token", refreshedToken);
+
+    // Make authenticated identity available to routes.
     req.userId = userId;
-    req.decoded = decoded;
+    req.decoded = {
+      ...userPayload,
+      lastActivityAt: now
+    };
 
     req.user = {
       userId,
       userType: decoded.userType || ""
     };
 
+      req.userType =
+        decoded.userType ||
+        decoded.role ||
+        "";
+
     next();
 
   } catch (error) {
-    const expired = error.name === "TokenExpiredError";
-
     return res.status(401).json({
       status: "error",
-      code: expired ? "TOKEN_EXPIRED" : "TOKEN_INVALID",
-      message: expired
-        ? "Your login session has expired. Please sign in again."
-        : "Your authentication token is invalid. Please sign in again."
+      code: "TOKEN_INVALID",
+      message: "Your authentication token is invalid. Please sign in again."
     });
   }
 }
-
 
 /*****************************************************
  *   ==== AITHONTICATION ====
@@ -651,13 +979,11 @@ app.get("/manage-students", async (req, res) => {
 
 
 // =====================================================
-// UPDATE STUDENT ACCOUNT STATUS
+// UPDATE NON-STUDENT ACCOUNT STATUS
 // =====================================================
 
-app.put("/manage-student/:id/status", async (req, res) => {
-
+app.put("/manage-account/:id/status", async (req, res) => {
   try {
-
     const { id } = req.params;
     const { accountStatus } = req.body;
 
@@ -672,68 +998,58 @@ app.put("/manage-student/:id/status", async (req, res) => {
     ];
 
     if (!allowedStatuses.includes(accountStatus)) {
-
       return res.status(400).json({
         status: "error",
         message: "Invalid account status."
       });
-
     }
 
     // ==========================================
-    // FIND STUDENT
+    // FIND ACCOUNT (EXCEPT STUDENT)
     // ==========================================
 
-    const student = await User_Login.findOne({
+    const user = await User_Login.findOne({
       _id: id,
-      userType: "Student"
+      userType: { $ne: "Student" }
     });
 
-    if (!student) {
-
+    if (!user) {
       return res.status(404).json({
         status: "error",
-        message: "Student account not found."
+        message: "Non-student account not found."
       });
-
     }
 
     // ==========================================
-    // UPDATE STATUS
+    // UPDATE ACCOUNT STATUS
     // ==========================================
 
-    student.accountStatus = accountStatus;
+    user.accountStatus = accountStatus;
 
-    await student.save();
+    await user.save();
 
     // ==========================================
     // RETURN WITHOUT PASSWORD
     // ==========================================
 
-    const studentData = student.toObject();
+    const userData = user.toObject();
 
-    delete studentData.password;
+    delete userData.password;
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "ok",
-      message: `Student account ${accountStatus}.`,
-      data: studentData
+      message: `Account ${accountStatus} successfully.`,
+      data: userData
     });
 
   } catch (error) {
+    console.error("Error updating account status:", error);
 
-    console.error(
-      "Error updating student status:",
-      error
-    );
-
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
-      message: "Failed to update student account."
+      message: "Failed to update account status."
     });
-
   }
-
 });
 
 // ==========================================
@@ -743,11 +1059,21 @@ app.put("/manage-student/:id/status", async (req, res) => {
 // 1. GET ALL USERS (All User Types)
 app.get('/Account-manage', async (req, res) => {
   try {
-    const users = await User_Login.find({}); // Replace User with your Mongoose model if needed
-    res.json({ status: "ok", data: users });
+    const users = await User_Login.find({
+      userType: { $ne: "Student" }
+    });
+
+    res.json({
+      status: "ok",
+      data: users
+    });
+
   } catch (error) {
     console.error("Error fetching accounts:", error);
-    res.status(500).json({ status: "error", message: "Failed to fetch accounts" });
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch accounts"
+    });
   }
 });
 
@@ -801,19 +1127,51 @@ app.put('/Account-manage/:id', async (req, res) => {
 });
 
 // 4. DELETE USER ACCOUNT
-app.delete('/Account-manage/:id', async (req, res) => {
+// app.delete('/Account-manage/:id', async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const deletedUser = await User_Login.findByIdAndDelete(id);
+
+//     if (!deletedUser) {
+//       return res.status(404).json({ status: "error", message: "User not found" });
+//     }
+
+//     res.json({ status: "ok", message: "Account deleted successfully" });
+//   } catch (error) {
+//     console.error("Error deleting account:", error);
+//     res.status(500).json({ status: "error", message: "Failed to delete account" });
+//   }
+// });
+app.put("/Account-manage/:id/disable", async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedUser = await User_Login.findByIdAndDelete(id);
 
-    if (!deletedUser) {
-      return res.status(404).json({ status: "error", message: "User not found" });
+    const updatedUser = await User_Login.findByIdAndUpdate(
+      id,
+      { $set: { accountStatus: "Disabled" } },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        status: "error",
+        message: "Account not found."
+      });
     }
 
-    res.json({ status: "ok", message: "Account deleted successfully" });
+    return res.json({
+      status: "ok",
+      message: "Account disabled successfully.",
+      user: updatedUser
+    });
+
   } catch (error) {
-    console.error("Error deleting account:", error);
-    res.status(500).json({ status: "error", message: "Failed to delete account" });
+    console.error("Disable account error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to disable account."
+    });
   }
 });
 
@@ -1968,10 +2326,23 @@ app.post("/login-user", async (req, res) => {
     // Find user
     const user = await User_Login.findOne({ email });
 
+    // if (!user) {
+    //   return res.status(404).json({
+    //     status: "error",
+    //     message: "User not found"
+    //   });
+    // }
     if (!user) {
-      return res.status(404).json({
+      await recordAudit(req, {
+        action: "LOGIN_FAILED",
+        category: "AUTH",
+        details: `Login attempt for ${email}`,
         status: "error",
-        message: "User not found"
+        errorMessage: "User not found"
+      });
+
+      return res.status(401).json({
+        message: "Invalid email or password"
       });
     }
 
@@ -1990,7 +2361,6 @@ app.post("/login-user", async (req, res) => {
       });
 
     }
-
 
     if (
       user.accountStatus === "Inactive"
@@ -2022,34 +2392,25 @@ app.post("/login-user", async (req, res) => {
       {
         userId: user._id.toString(),
         email: user.email,
-        userType: user.userType
+        userType: user.userType,
+        lastActivityAt: Date.now()
       },
       JWT_SECRET,
       {
         expiresIn: "15m"
       }
     );
+
     // =====================================================
-    // 4. AUDIT LOG: SUCCESSFUL LOGIN
-    // Insert after successful password verification.
+    // AUDIT LOG: SUCCESSFUL LOGIN
     // =====================================================
 
-    await writeAuditLog(req, {
-      actor: user,
-
-      action: "User signed in",
-
-      details:
-        `${user.fname || ""} ${user.lname || ""}`.trim() +
-        " signed in successfully.",
-
-      entityType: "User",
-
-      entityId: user._id,
-
-      outcome: "success"
+    await recordAudit(req, {
+      action: "LOGIN",
+      category: "AUTH",
+      details: `User ${user.fname || user.username} logged in successfully`,
+      status: "success"
     });
-
 
     // Return complete user information
     return res.status(200).json({
@@ -2076,6 +2437,46 @@ app.post("/login-user", async (req, res) => {
     });
   }
 });
+
+
+// app.post("/api/logout", authenticateToken, async (req, res) => {
+//   await recordAudit(req, {
+//     action: "LOGOUT",
+//     category: "AUTH",
+//     details: "User logged out",
+//     status: "success"
+//   });
+
+//   res.json({
+//     message: "Logout recorded successfully"
+//   });
+// });
+
+
+app.post("/api/logout", authenticateToken, async (req, res) => {
+  try {
+    await recordAudit(req, {
+      action: "LOGOUT",
+      category: "AUTH",
+      details: `User ${req.user?.fname || req.user?.username || req.user?.email || "Unknown"} logged out successfully.`,
+      status: "success"
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Logout recorded successfully"
+    });
+
+  } catch (error) {
+    console.error("Logout error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Logout failed"
+    });
+  }
+});
+
   
   app.post("/userData", async (req, res) => {
     const { token } = req.body;
@@ -2413,7 +2814,8 @@ app.post("/assign-research", async (req, res) => {
     const {
       researcherId,
       researcherName,
-      researcherEmail
+      researcherEmail,
+      assignedAt,
     } = req.body;
 
     if (!researcherId) {
@@ -2434,7 +2836,7 @@ app.post("/assign-research", async (req, res) => {
           assignedResearcherId: researcherId,
           assignedResearcherName: researcherName,
           assignedResearcherEmail: researcherEmail,
-
+          assignedAt: assignedAt,
           assignmentStatus: "Assigned",
 
           assignedAt: new Date()
@@ -2456,7 +2858,7 @@ app.post("/assign-research", async (req, res) => {
 
     res.json({
       status: "ok",
-      message: "Researcher assigned successfully",
+      message: "Reviwer assigned successfully",
       data: proposal
     });
 
@@ -3047,10 +3449,21 @@ app.put("/researcher-assignment-status/:proposalId", async (req, res) => {
     // Also update the original research proposal
     const research = await ResearchMondel.findById(proposalId);
 
-    if (research) {
-      research.assignmentStatus = assignmentStatus;
-      await research.save();
-    }
+if (research) {
+  research.assignmentStatus = assignmentStatus;
+  await research.save();
+}
+
+// ==========================================
+// AUDIT LOG: RESEARCHER ASSIGNMENT STATUS UPDATED
+// ==========================================
+
+    await recordAudit(req, {
+      action: "RESEARCHER_ASSIGNMENT_STATUS_UPDATED",
+      category: "RESEARCH",
+      details: `Researcher ${researcherId} assignment status changed to "${assignmentStatus}" for proposal ${proposalId}.`,
+      status: "success"
+    });
 
     return res.status(200).json({
       status: "ok",
@@ -3073,80 +3486,80 @@ app.put("/researcher-assignment-status/:proposalId", async (req, res) => {
  *   ==== LOG HISTORY HANDLING ====
  *****************************************************/
 
-async function addLog(action, details) {
-  try {
+// async function addLog(action, details) {
+//   try {
     // Save in MongoDB
-    await new AuditLog({ action, details }).save();
+    // await new AuditLog({ action, details }).save();
 
     // Save in file system
-    const logLine = `${new Date().toISOString()} | ${action} | ${details}\n`;
-    fs.appendFileSync(path.join(__dirname, "server.log"), logLine);
-  } catch (err) {
-    console.error("Error saving log:", err);
-  }
-}
+//     const logLine = `${new Date().toISOString()} | ${action} | ${details}\n`;
+//     fs.appendFileSync(path.join(__dirname, "server.log"), logLine);
+//   } catch (err) {
+//     console.error("Error saving log:", err);
+//   }
+// }
 
 // === Example Routes ===
-app.post("/api/data", async (req, res) => {
-  const { name } = req.body;
-  if (!name) {
-    await addLog("ERROR", "Name is missing in /api/data request");
-    return res.status(400).json({ error: "Name required" });
-  }
+// app.post("/api/data", async (req, res) => {
+//   const { name } = req.body;
+//   if (!name) {
+//     await addLog("ERROR", "Name is missing in /api/data request");
+//     return res.status(400).json({ error: "Name required" });
+//   }
 
-  await addLog("CREATE", `New data created for ${name}`);
-  res.json({ success: true, message: `Data saved for ${name} `});
-});
+//   await addLog("CREATE", `New data created for ${name}`);
+//   res.json({ success: true, message: `Data saved for ${name} `});
+// });
 
-app.get("/api/logs", async (req, res) => {
-  const logs = await AuditLog.find({}).sort({ createdAt: -1 });
-  res.json(logs);
-});
+// app.get("/api/logs", async (req, res) => {
+//   const logs = await AuditLog.find({}).sort({ createdAt: -1 });
+//   res.json(logs);
+// });
 ///////////////////////////////////////////////new with log text/////////////
 // ✅ Log file path
-const logFile = path.join(__dirname, "logs.txt");
+// const logFile = path.join(__dirname, "logs.txt");
 
 // ✅ Middleware to save logs (DB + File)
-app.use(async (req, res, next) => {
-  const logEntry = `${new Date().toISOString()} | ${req.headers["x-user"] || "guest"} | ${req.method} ${req.url}\n`;
+// app.use(async (req, res, next) => {
+//   const logEntry = `${new Date().toISOString()} | ${req.headers["x-user"] || "guest"} | ${req.method} ${req.url}\n`;
 
   // Save to DB
-  try {
-    await AuditLog.create({
-      action: `${req.method} ${req.url}`,
-      user: req.headers["x-user"] || "guest",
-    });
-  } catch (err) {
-    console.error("DB log error:", err.message);
-  }
+  // try {
+  //   await AuditLog.create({
+  //     action: `${req.method} ${req.url}`,
+  //     user: req.headers["x-user"] || "guest",
+  //   });
+  // } catch (err) {
+  //   console.error("DB log error:", err.message);
+  // }
 
   // Save to File
-  fs.appendFile(logFile, logEntry, (err) => {
-    if (err) console.error("File log error:", err.message);
-  });
+//   fs.appendFile(logFile, logEntry, (err) => {
+//     if (err) console.error("File log error:", err.message);
+//   });
 
-  next();
-});
+//   next();
+// });
 
 // ✅ Example route
-app.post("/api/doSomething", (req, res) => {
-  res.json({ message: "Action performed successfully!" });
-});
+// app.post("/api/doSomething", (req, res) => {
+//   res.json({ message: "Action performed successfully!" });
+// });
 
 // ✅ Get logs from DB
-app.get("/api/logs", async (req, res) => {
-  const logs = await AuditLog.find({}).sort({ createdAt: -1 });
-  res.json(logs);
-});
+// app.get("/api/logs", async (req, res) => {
+//   const logs = await AuditLog.find({}).sort({ createdAt: -1 });
+//   res.json(logs);
+// });
 
-// ✅ Get logs from File
-app.get("/api/logs/file", (req, res) => {
-  fs.readFile(logFile, "utf8", (err, data) => {
-    if (err) return res.status(500).json({ error: "Could not read logs.txt" });
-    res.type("text/plain").send(data);
-  });
-});
-
+{/* ✅ Get logs from File
+// app.get("/api/logs/file", (req, res) => {
+//   fs.readFile(logFile, "utf8", (err, data) => {
+//     if (err) return res.status(500).json({ error: "Could not read logs.txt" });
+//     res.type("text/plain").send(data);
+//   });
+// });
+*/}
 
 // ============================================================
 // 2. FIND THE EXISTING USER MODEL
@@ -3165,43 +3578,85 @@ const USER_MODEL =
 // verifyToken should set req.userId or req.user.
 // ============================================================
 
-async function getAuditActor(req, actorOverride = null) {
-  if (actorOverride) {
-    return actorOverride;
-  }
+// async function getAuditActor(req, actorOverride = null) {
+//   if (actorOverride) {
+//     return actorOverride;
+//   }
 
-  if (
-    req?.user &&
-    (req.user.fname || req.user.lname || req.user.email)
-  ) {
-    return req.user;
-  }
+//   if (
+//     req?.user &&
+//     (req.user.fname || req.user.lname || req.user.email)
+//   ) {
+//     return req.user;
+//   }
 
-  const userId =
-    req?.userId ||
-    req?.user?._id ||
-    req?.decoded?.userId ||
-    req?.decoded?.id ||
-    req?.decoded?._id;
+//   const userId =
+//     req?.userId ||
+//     req?.user?._id ||
+//     req?.decoded?.userId ||
+//     req?.decoded?.id ||
+//     req?.decoded?._id;
 
-  if (!userId || !USER_MODEL) {
-    return null;
-  }
+//   if (!userId || !USER_MODEL) {
+//     return null;
+//   }
 
+//   try {
+//     return await USER_MODEL.findById(userId)
+//       .select("fname lname email userType")
+//       .lean();
+//   } catch (error) {
+//     console.error(
+//       "Could not identify audit actor:",
+//       error.message
+//     );
+
+//     return null;
+//   }
+// }
+
+async function getAuditActor(req) {
   try {
-    return await USER_MODEL.findById(userId)
-      .select("fname lname email userType")
-      .lean();
-  } catch (error) {
-    console.error(
-      "Could not identify audit actor:",
-      error.message
-    );
+    const userId =
+      req.userId ||
+      req.user?.userId ||
+      req.decoded?.userId ||
+      req.decoded?.id ||
+      req.decoded?._id;
 
+    if (!userId) {
+      console.log("Audit actor: User ID not found in request.");
+      return null;
+    }
+
+    const user = await User_Login.findById(userId).lean();
+
+    if (!user) {
+      console.log("Audit actor: User not found in database:", userId);
+      return null;
+    }
+
+    return {
+      _id: user._id,
+      userId: user._id,
+      username:
+        user.username ||
+        user.fname ||
+        user.firstName ||
+        "Unknown User",
+      email: user.email || "",
+      userType:
+        user.userType ||
+        user.role ||
+        req.userType ||
+        ""
+    };
+
+  } catch (error) {
+    console.error("getAuditActor error:", error);
     return null;
   }
 }
-
 
 // ============================================================
 // 4. WRITE AN AUDIT LOG
@@ -3361,7 +3816,8 @@ app.get("/api/logs", verifyToken, async (req, res) => {
 
       const regex = new RegExp(safeSearch, "i");
 
-      filter.$or = [
+    filter.$or = [
+        { username: regex }, // ADD THIS
         { actorName: regex },
         { fname: regex },
         { lname: regex },
@@ -3403,6 +3859,13 @@ app.get("/api/logs", verifyToken, async (req, res) => {
       message: "Unable to fetch audit logs."
     });
   }
+});
+
+app.get("/api/session/activity", verifyToken, (req, res) => {
+  res.status(200).json({
+    status: "success",
+    message: "User session is active."
+  });
 });
     /*****************************************************
  *   ==== RESERCH RECIEVED CALCULATION FORMULA====Function to add working days (skipping Saturday & Sunday)
@@ -5660,7 +6123,18 @@ app.post("/Esend", attached.single("file"), async (req, res) => {
       ],
     };
 
-    await transporter.sendMail(mailOptions);
+await transporter.sendMail(mailOptions);
+
+// ==========================================
+// AUDIT LOG: RESEARCH EMAIL SENT
+// ==========================================
+
+    await recordAudit(req, {
+      action: "RESEARCH_EMAIL_SENT",
+      category: "RESEARCH",
+      details: `Research email sent successfully. Subject: "${Title}". Principal Investigator: ${PrincipalI || "Not provided"}. Recipient: ${email}. Status: ${Statua || "Not provided"}.`,
+      status: "success"
+    });
 
     res.send({ status: "ok", message: "Email sent and file saved successfully" });
   } catch (error) {
@@ -6083,17 +6557,17 @@ app.get("/sendEmail", (req, res) => {
 
 // REGISTER////////////////////////////////////////////////////////////////////////
 //POST REGISTER
-app.post('/register', async (req, res) => {
-    try {
-        const { name,Lname,email,  username, password ,roles} = req.body
-        const hashedPassword = await bcrypt.hash(password, 10)
-        const newUser = new User({ name,Lname, email, username,roles, password: hashedPassword })
-        await newUser.save()
-        res.status(201).json({ message: 'User created successfully' })
-    } catch (error) {
-        res.status(500).json({ error: 'Error signing up' })
-    }
-})
+// app.post('/register', async (req, res) => {
+//     try {
+//         const { name,Lname,email,  username, password ,roles} = req.body
+//         const hashedPassword = await bcrypt.hash(password, 10)
+//         const newUser = new User({ name,Lname, email, username,roles, password: hashedPassword })
+//         await newUser.save()
+//         res.status(201).json({ message: 'User created successfully' })
+//     } catch (error) {
+//         res.status(500).json({ error: 'Error signing up' })
+//     }
+// })
 
 //GET Registered Users
 app.get('/register', async (req, res) => {
@@ -16782,24 +17256,21 @@ app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
     // AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
     // ==========================================
 
-    await writeAuditLog(req, {
-      action: "Research proposal submitted",
+   // ==========================================
+// AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
+// ==========================================
 
-      details:
-        `Submitted research proposal "${Title || "Untitled Proposal"}". ` +
-        `Student ID: ${studentID || "Not provided"}. ` +
-        `College: ${NCollege || "Not provided"}. ` +
-        `Principal Investigator: ${PI || "Not provided"}. ` +
-        `Number of uploaded files: ${req.files.length}.`,
-
-      entityType: "Research Proposal",
-
-      entityId: results
-        .map((item) => String(item._id))
-        .join(", "),
-
-      outcome: "success",
-    });
+await recordAudit(req, {
+  action: "RESEARCH_PROPOSAL_SUBMITTED",
+  category: "RESEARCH",
+  details:
+    `Submitted research proposal "${Title || "Untitled Proposal"}". ` +
+    `Student ID: ${studentID || "Not provided"}. ` +
+    `College: ${NCollege || "Not provided"}. ` +
+    `Principal Investigator: ${PI || "Not provided"}. ` +
+    `Number of uploaded files: ${req.files.length}.`,
+  status: "success"
+});
 
    res.json({ message: "Uploaded & saved successfully", files: results });
   } catch (err) {
@@ -16808,24 +17279,165 @@ app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
   }
 });
 
-// ==========================================
-// AUTHENTICATION MIDDLEWARE
-// ==========================================
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
+app.get(
+  "/api/logs",
+  authenticateToken,
+  authorizeAuditAdmin,
+  async (req, res) => {
+    try {
+      const page = Math.max(
+        1,
+        parseInt(req.query.page) || 1
+      );
 
-  if (!token) {
-    return res.status(401).json({ message: "Authentication token required." });
+      const limit = Math.min(
+        500,
+        Math.max(1, parseInt(req.query.limit) || 50)
+      );
+
+      const skip = (page - 1) * limit;
+
+      const [logs, total] = await Promise.all([
+        AuditLog.find()
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+
+        AuditLog.countDocuments()
+      ]);
+
+      res.status(200).json({
+        success: true,
+        logs,
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      });
+
+    } catch (error) {
+      console.error("Audit logs API error:", error);
+
+      res.status(500).json({
+        message: "Unable to retrieve audit logs"
+      });
+    }
   }
+);
+// ==========================================
+// View Details button in AuditLog.jsx
+// ==========================================
 
-  jwt.verify(token, process.env.JWT_SECRET || "YOUR_SECRET_KEY_HERE", (err, user) => {
-    if (err) return res.status(403).json({ message: "Invalid or expired token." });
-    req.user = user;
-    next();
-  });
-};
+app.get(
+  "/api/logs/user/:userId",
+  authenticateToken,
+  authorizeAuditAdmin,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
 
+      // Validate MongoDB ObjectId
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid user ID"
+        });
+      }
+
+      const objectUserId = new mongoose.Types.ObjectId(userId);
+
+      // Pagination
+      const page = Math.max(
+        1,
+        parseInt(req.query.page, 10) || 1
+      );
+
+      const limit = Math.min(
+        200,
+        Math.max(1, parseInt(req.query.limit, 10) || 50)
+      );
+
+      const skip = (page - 1) * limit;
+
+      // Retrieve user activities
+      const [activities, total] = await Promise.all([
+        AuditLog.find({ userId: objectUserId })
+          .sort({ createdAt: -1, _id: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+
+        AuditLog.countDocuments({
+          userId: objectUserId
+        })
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        userId,
+        activities,
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      });
+
+    } catch (error) {
+      console.error("User activity API error:", error);
+
+      return res.status(500).json({
+        success: false,
+        message: "Unable to retrieve user activity"
+      });
+    }
+  }
+);
+
+
+// ==========================================
+// Get audit statistics
+// ==========================================
+app.get(
+  "/api/logs/statistics",
+  authenticateToken,
+  authorizeAuditAdmin,
+  async (req, res) => {
+    try {
+      const [
+        totalActivities,
+        totalUsers,
+        successfulLogins,
+        failedActivities
+      ] = await Promise.all([
+        AuditLog.countDocuments(),
+
+        AuditLog.distinct("userId"),
+
+        AuditLog.countDocuments({
+          action: "LOGIN",
+          status: "success"
+        }),
+
+        AuditLog.countDocuments({
+          status: "failed"
+        })
+      ]);
+
+      res.json({
+        totalActivities,
+        totalUsers: totalUsers.length,
+        successfulLogins,
+        failedActivities
+      });
+
+    } catch (error) {
+      res.status(500).json({
+        message: "Unable to retrieve audit statistics"
+      });
+    }
+  }
+);
 // ==========================================
 // RESEARCH PROPOSAL API ROUTES
 // ==========================================
@@ -16881,6 +17493,113 @@ app.get("/api/research/:id", authenticateToken, async (req, res) => {
 });
 
 // PUT /api/research/:id — Update an existing proposal with document replacement support
+// app.put(
+//   "/api/research/:id",
+//   authenticateToken,
+//   upload.array("replacementFiles"),
+//   async (req, res) => {
+//     try {
+//       const studentUserId = req.user.userId || req.user.id || req.user.studentID;
+//       const studentEmail = req.user.email;
+//       const proposalId = req.params.id;
+
+//       const proposal = await ResearchMondel.findById(proposalId);
+//       if (!proposal) {
+//         return res.status(404).json({ message: "Research proposal not found." });
+//       }
+
+//       const isOwner =
+//         String(proposal.studentID) === String(studentUserId) ||
+//         String(proposal.email) === String(studentEmail) ||
+//         String(proposal.user) === String(studentUserId);
+
+//       if (!isOwner) {
+//         return res.status(403).json({ message: "Access denied: You can only update your own applications." });
+//       }
+
+//       const textFields = [
+//         "NCollege", "Department", "TDepartment", "StudyF", "Nadvisor", "email", "phone",
+//         "PI", "PIPhone", "PIemail", "Title", "ConductS", "Rmethods", "Study", "Design",
+//         "TDesign", "geographicA", "TGeographicA", "Slocation", "Gender", "TGender",
+//         "populations", "MicroD", "Eelectronically", "Tools", "Tcollection", "TTcollection",
+//         "Budget", "Geocoordinate", "Groups", "Dsharing", "Reasons", "NewColl"
+//       ];
+
+//       textFields.forEach((field) => {
+//         if (req.body[field] !== undefined) {
+//           proposal[field] = req.body[field];
+//         }
+//       });
+
+//       if (req.body.FocusA) {
+//         try { proposal.FocusA = JSON.parse(req.body.FocusA); } catch (_) { proposal.FocusA = req.body.FocusA; }
+//       }
+//       if (req.body.selectedChoices) {
+//         try { proposal.selectedChoices = JSON.parse(req.body.selectedChoices); } catch (_) { proposal.selectedChoices = req.body.selectedChoices; }
+//       }
+//       if (req.body.SPeriodB) proposal.SPeriodB = new Date(req.body.SPeriodB);
+//       if (req.body.SPeriodE) proposal.SPeriodE = new Date(req.body.SPeriodE);
+
+//       const replacementDocumentIdsRaw = req.body.replacementDocumentIds;
+//       let replacementDocumentIds = [];
+//       if (replacementDocumentIdsRaw) {
+//         try {
+//           replacementDocumentIds = JSON.parse(replacementDocumentIdsRaw);
+//         } catch (_) {
+//           replacementDocumentIds = Array.isArray(replacementDocumentIdsRaw)
+//             ? replacementDocumentIdsRaw
+//             : [replacementDocumentIdsRaw];
+//         }
+//       }
+
+//       const uploadedReplacements = req.files || [];
+//       let currentDocuments = proposal.documents || proposal.files || [];
+
+//       replacementDocumentIds.forEach((docIdToReplace, idx) => {
+//         const newUploadedFile = uploadedReplacements[idx];
+//         if (newUploadedFile) {
+//           const docIndex = currentDocuments.findIndex(
+//             (d) => String(d._id || d.id) === String(docIdToReplace)
+//           );
+//           const newDocObj = {
+//             _id: docIdToReplace,
+//             originalName: newUploadedFile.originalname,
+//             filename: newUploadedFile.filename,
+//             path: newUploadedFile.path,
+//             url: `/uploads/${newUploadedFile.filename}`,
+//             updatedAt: new Date()
+//           };
+//           if (docIndex !== -1) {
+//             currentDocuments[docIndex] = { ...currentDocuments[docIndex], ...newDocObj };
+//           } else {
+//             currentDocuments.push(newDocObj);
+//           }
+//         }
+//       });
+
+//       proposal.documents = currentDocuments;
+//       proposal.updatedAt = new Date();
+
+//       await proposal.save();
+
+//       return res.status(200).json({
+//         message: "Research application updated successfully.",
+//         application: proposal
+//       });
+//     } catch (error) {
+//       console.error("Error updating proposal:", error);
+//       return res.status(500).json({ message: "Failed to update proposal application." });
+//     }
+//   }
+// );
+
+// =====================================================
+// RESEARCH PROPOSAL UPDATE API: SAVE STUDENT RESPONSE BADGE
+// =====================================================
+// Keep your existing authenticateToken and upload configuration.
+// This PUT route marks a proposal as "Commented" only after the
+// authenticated owner successfully edits and saves the proposal.
+
 app.put(
   "/api/research/:id",
   authenticateToken,
@@ -16896,13 +17615,16 @@ app.put(
         return res.status(404).json({ message: "Research proposal not found." });
       }
 
+      // Only the student who owns this proposal may edit it.
       const isOwner =
         String(proposal.studentID) === String(studentUserId) ||
         String(proposal.email) === String(studentEmail) ||
         String(proposal.user) === String(studentUserId);
 
       if (!isOwner) {
-        return res.status(403).json({ message: "Access denied: You can only update your own applications." });
+        return res.status(403).json({
+          message: "Access denied: You can only update your own applications."
+        });
       }
 
       const textFields = [
@@ -16919,17 +17641,28 @@ app.put(
         }
       });
 
-      if (req.body.FocusA) {
-        try { proposal.FocusA = JSON.parse(req.body.FocusA); } catch (_) { proposal.FocusA = req.body.FocusA; }
+      if (req.body.FocusA !== undefined) {
+        try {
+          proposal.FocusA = JSON.parse(req.body.FocusA);
+        } catch (_) {
+          proposal.FocusA = req.body.FocusA;
+        }
       }
-      if (req.body.selectedChoices) {
-        try { proposal.selectedChoices = JSON.parse(req.body.selectedChoices); } catch (_) { proposal.selectedChoices = req.body.selectedChoices; }
+
+      if (req.body.selectedChoices !== undefined) {
+        try {
+          proposal.selectedChoices = JSON.parse(req.body.selectedChoices);
+        } catch (_) {
+          proposal.selectedChoices = req.body.selectedChoices;
+        }
       }
+
       if (req.body.SPeriodB) proposal.SPeriodB = new Date(req.body.SPeriodB);
       if (req.body.SPeriodE) proposal.SPeriodE = new Date(req.body.SPeriodE);
 
       const replacementDocumentIdsRaw = req.body.replacementDocumentIds;
       let replacementDocumentIds = [];
+
       if (replacementDocumentIdsRaw) {
         try {
           replacementDocumentIds = JSON.parse(replacementDocumentIdsRaw);
@@ -16943,43 +17676,67 @@ app.put(
       const uploadedReplacements = req.files || [];
       let currentDocuments = proposal.documents || proposal.files || [];
 
-      replacementDocumentIds.forEach((docIdToReplace, idx) => {
-        const newUploadedFile = uploadedReplacements[idx];
-        if (newUploadedFile) {
-          const docIndex = currentDocuments.findIndex(
-            (d) => String(d._id || d.id) === String(docIdToReplace)
-          );
-          const newDocObj = {
-            _id: docIdToReplace,
-            originalName: newUploadedFile.originalname,
-            filename: newUploadedFile.filename,
-            path: newUploadedFile.path,
-            url: `/uploads/${newUploadedFile.filename}`,
-            updatedAt: new Date()
+      replacementDocumentIds.forEach((docIdToReplace, index) => {
+        const newUploadedFile = uploadedReplacements[index];
+        if (!newUploadedFile) return;
+
+        const docIndex = currentDocuments.findIndex(
+          (doc) => String(doc._id || doc.id) === String(docIdToReplace)
+        );
+
+        const newDocObj = {
+          _id: docIdToReplace,
+          originalName: newUploadedFile.originalname,
+          filename: newUploadedFile.filename,
+          path: newUploadedFile.path,
+          url: `/uploads/${newUploadedFile.filename}`,
+          updatedAt: new Date()
+        };
+
+        if (docIndex !== -1) {
+          currentDocuments[docIndex] = {
+            ...currentDocuments[docIndex],
+            ...newDocObj
           };
-          if (docIndex !== -1) {
-            currentDocuments[docIndex] = { ...currentDocuments[docIndex], ...newDocObj };
-          } else {
-            currentDocuments.push(newDocObj);
-          }
+        } else {
+          currentDocuments.push(newDocObj);
         }
       });
 
       proposal.documents = currentDocuments;
+
+      // IMPORTANT: do not overwrite assignmentStatus / reviewStatus / approval status.
+      // This separate field tells the secretary that the student edited and resaved it.
+      proposal.studentResponseStatus = "Commented";
+      proposal.studentRespondedAt = new Date();
       proposal.updatedAt = new Date();
 
-      await proposal.save();
+await proposal.save();
 
-      return res.status(200).json({
-        message: "Research application updated successfully.",
+// ==========================================
+// AUDIT LOG: RESEARCH PROPOSAL UPDATED
+// ==========================================
+
+    await recordAudit(req, {
+      action: "RESEARCH_PROPOSAL_UPDATED",
+      category: "RESEARCH",
+      details: `Research proposal "${proposal.Title || "Untitled Proposal"}" updated by student. Student ID: ${proposal.studentID || "Not provided"}.`,
+      status: "success"
+    });
+
+    return res.status(200).json({
+        message: "Research application updated successfully. It is now marked as Commented.",
         application: proposal
       });
     } catch (error) {
       console.error("Error updating proposal:", error);
-      return res.status(500).json({ message: "Failed to update proposal application." });
+      return res.status(500).json({
+        message: "Failed to update proposal application."
+      });
     }
   }
 );
+
 
 //////Homepage LabGuidlines/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
@@ -22292,6 +23049,28 @@ app.get('/EVENTSGet',(req, res) =>{
 }).catch(err => res.json(err))
 
 })*/
+/*****************************************************
+ * Record system errors automatically
+ *****************************************************/
+app.use(async (err, req, res, next) => {
+  console.error("SERVER ERROR:", err);
+
+  await recordAudit(req, {
+    action: "SYSTEM_ERROR",
+    category: "SYSTEM",
+    details: `Server error on ${req.method} ${req.originalUrl}`,
+    status: "failed",
+    errorMessage: err.message || "Unknown server error"
+  });
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  res.status(err.status || 500).json({
+    message: "An internal server error occurred"
+  });
+});
 /*****************************************************
  * SERVER START
  *****************************************************/
