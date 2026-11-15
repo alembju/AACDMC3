@@ -1,4 +1,14 @@
 const mongoose = require("mongoose");
+
+const UploadedDocumentSchema = new mongoose.Schema(
+  {
+    public_id: { type: String, default: "" },
+    url: { type: String, default: "" },
+    original_filename: { type: String, default: "" },
+    format: { type: String, default: "" },
+  },
+  { _id: false }
+);
   
 const ResearchSchema = new mongoose.Schema({
   studentID: String,
@@ -51,6 +61,29 @@ const ResearchSchema = new mongoose.Schema({
     url: String,
     original_filename: String,
     format: String,
+     // All five documents belong to this one proposal record
+  documents: {
+    supportingLetter: {
+      type: UploadedDocumentSchema,
+      default: () => ({}),
+    },
+    kebeleID: {
+      type: UploadedDocumentSchema,
+      default: () => ({}),
+    },
+    cvPDF: {
+      type: UploadedDocumentSchema,
+      default: () => ({}),
+    },
+    proposalPDF: {
+      type: UploadedDocumentSchema,
+      default: () => ({}),
+    },
+    proposalWord: {
+      type: UploadedDocumentSchema,
+      default: () => ({}),
+    },
+  },
     assignmentStatus: {
     type: String,
     enum: [

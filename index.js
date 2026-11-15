@@ -369,6 +369,7 @@ app.options("*", cors({
  *****************************************************/
 
 
+
 const recordAudit = async (
   req,
   {
@@ -377,7 +378,7 @@ const recordAudit = async (
     category = "OTHER",
     status = "success",
     errorMessage = ""
-  }
+  } = {}
 ) => {
   try {
     // Get authenticated user information
@@ -387,7 +388,7 @@ const recordAudit = async (
       req.auth ||
       {};
 
-    // Your JWT uses userId, not necessarily _id
+    // Get user ID from JWT or authenticated user
     const userId =
       user._id ||
       user.id ||
@@ -395,13 +396,15 @@ const recordAudit = async (
       user.user_id ||
       null;
 
-    // If the authentication middleware only provides JWT data,
-    // retrieve the complete user information from MongoDB.
-    if (userId && (
-      !user.username ||
-      !user.fname ||
-      !user.userType
-    )) {
+    // Retrieve complete user information from MongoDB
+    if (
+      userId &&
+      (
+        !user.username ||
+        !user.fname ||
+        !user.userType
+      )
+    ) {
       try {
         const dbUser = await User_Login.findById(userId)
           .select("fname lname username email userType");
@@ -425,19 +428,47 @@ const recordAudit = async (
       }
     }
 
+    // Ensure action and details are always valid
+    const safeAction =
+      typeof action === "string" && action.trim()
+        ? action.trim()
+        : "UNKNOWN";
+
+    const safeDetails =
+      typeof details === "string" && details.trim()
+        ? details.trim()
+        : "No additional details";
+
+    const safeCategory = [
+      "AUTH",
+      "RESEARCH",
+      "USER",
+      "DOCUMENT",
+      "SYSTEM",
+      "OTHER"
+    ].includes(category)
+      ? category
+      : "OTHER";
+
+    const safeStatus =
+      status === "failed" ? "failed" : "success";
+
+    // Device and browser information
     const userAgent = req.headers["user-agent"] || "";
     const parser = new UAParser(userAgent);
     const result = parser.getResult();
 
+    // Get IP address
     const forwardedFor = req.headers["x-forwarded-for"];
 
     const ipAddress =
-      req.ip ||
-      (forwardedFor
+      forwardedFor
         ? forwardedFor.split(",")[0].trim()
-        : req.socket?.remoteAddress) ||
-      "Unknown";
+        : req.ip ||
+          req.socket?.remoteAddress ||
+          "Unknown";
 
+    // Build username
     const fullName = [
       user.fname || user.firstName,
       user.lname || user.lastName
@@ -452,6 +483,7 @@ const recordAudit = async (
       req.body?.email ||
       "Unknown User";
 
+    // Create audit record
     const audit = new AuditLog({
       userId: userId,
 
@@ -468,11 +500,11 @@ const recordAudit = async (
         user.accountType ||
         "Unknown",
 
-      action,
+      action: safeAction,
 
-      details: details || "No additional details",
+      details: safeDetails,
 
-      category,
+      category: safeCategory,
 
       ipAddress,
 
@@ -494,11 +526,13 @@ const recordAudit = async (
 
       userAgent,
 
-      method: req.method,
-      endpoint: req.originalUrl,
+      method: req.method || "",
 
-      status,
-      errorMessage,
+      endpoint: req.originalUrl || "",
+
+      status: safeStatus,
+
+      errorMessage: errorMessage || "",
 
       sessionId: req.sessionID || null,
 
@@ -518,6 +552,7 @@ const recordAudit = async (
     return null;
   }
 };
+
 
 
 
@@ -797,7 +832,7 @@ app.use(
 // }
 
 
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 10 minutes
 
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -830,7 +865,7 @@ function verifyToken(req, res, next) {
     // Close session after 10 minutes without activity.
     if (
       !lastActivityAt ||
-      lastActivityAt > now + 60000 ||
+      lastActivityAt > now + 600000 ||
       now - lastActivityAt >= IDLE_TIMEOUT_MS
     ) {
       return res.status(401).json({
@@ -1086,7 +1121,7 @@ app.put('/manage-student/:id/status', async (req, res) => {
     const { id } = req.params;
     const { accountStatus } = req.body;
 
-    const updatedUser = await User.findByIdAndUpdate(
+    const updatedUser = await User_Login.findByIdAndUpdate(
       id,
       { accountStatus },
       { new: true }
@@ -2401,16 +2436,33 @@ app.post("/login-user", async (req, res) => {
       }
     );
 
-    // =====================================================
-    // AUDIT LOG: SUCCESSFUL LOGIN
-    // =====================================================
+   // =====================================================
+      // AUDIT LOG: SUCCESSFUL LOGIN
+      // =====================================================
 
-    await recordAudit(req, {
-      action: "LOGIN",
-      category: "AUTH",
-      details: `User ${user.fname || user.username} logged in successfully`,
-      status: "success"
-    });
+      // Set authenticated user information before recording the audit.
+      req.user = {
+        _id: user._id,
+        userId: user._id.toString(),
+        fname: user.fname,
+        lname: user.lname,
+        username: user.username,
+        email: user.email,
+        userType: user.userType
+      };
+
+      req.userId = user._id.toString();
+      req.userType = user.userType;
+
+      // Record successful login with the correct user role.
+      await recordAudit(req, {
+        action: "LOGIN",
+        category: "AUTH",
+        details: `User ${user.fname || user.username} logged in successfully`,
+        status: "success",
+        userType: user.userType,
+        email: user.email
+      });
 
     // Return complete user information
     return res.status(200).json({
@@ -2855,6 +2907,16 @@ app.post("/assign-research", async (req, res) => {
       });
 
     }
+      // =====================================================
+    // AUDIT LOG: Researcher assigned successfully
+    // =====================================================
+
+    await recordAudit(req, {
+      action: "RESEARCHER_ASSIGNED",
+      category: "RESEARCH",
+      details: `Researcher ${researcherName || researcherEmail || researcherId} was assigned to research proposal ${proposal._id} successfully.`,
+      status: "success"
+    });
 
     res.json({
       status: "ok",
@@ -2938,6 +3000,16 @@ app.put("/research-assignment-status/:id", async (req, res) => {
       });
 
     }
+      // =====================================================
+    // AUDIT LOG: Assignment status changed successfully
+    // =====================================================
+
+    await recordAudit(req, {
+      action: "RESEARCH_ASSIGNMENT_STATUS_UPDATED",
+      category: "RESEARCH",
+      details: `Research assignment status for proposal ${proposal._id} was changed to "${assignmentStatus}" successfully.`,
+      status: "success"
+    });
 
     res.json({
       status: "ok",
@@ -3156,6 +3228,16 @@ app.put(
             "Proposal not found or not assigned to this researcher",
         });
       }
+        // =====================================================
+    // AUDIT LOG: PROPOSALS ASSIGNED TO THIS RESEARCHER
+    // =====================================================
+
+    await recordAudit(req, {
+      action: "RESEARCH_ASSIGNMENT_STATUS_UPDATED",
+      category: "RESEARCH",
+      details: `Research assignment status for proposal ${proposal._id} was changed to "${assignmentStatus}" successfully.`,
+      status: "success"
+    });
 
       res.json({
         status: "ok",
@@ -3488,10 +3570,10 @@ if (research) {
 
 // async function addLog(action, details) {
 //   try {
-    // Save in MongoDB
-    // await new AuditLog({ action, details }).save();
+//     Save in MongoDB
+//     await new AuditLog({ action, details }).save();
 
-    // Save in file system
+//     // Save in file system
 //     const logLine = `${new Date().toISOString()} | ${action} | ${details}\n`;
 //     fs.appendFileSync(path.join(__dirname, "server.log"), logLine);
 //   } catch (err) {
@@ -3511,7 +3593,7 @@ if (research) {
 //   res.json({ success: true, message: `Data saved for ${name} `});
 // });
 
-// app.get("/api/logs", async (req, res) => {
+// app.get("/api/Activitylogs", async (req, res) => {
 //   const logs = await AuditLog.find({}).sort({ createdAt: -1 });
 //   res.json(logs);
 // });
@@ -3528,6 +3610,7 @@ if (research) {
   //   await AuditLog.create({
   //     action: `${req.method} ${req.url}`,
   //     user: req.headers["x-user"] || "guest",
+  //      details: `${req.method}`,
   //   });
   // } catch (err) {
   //   console.error("DB log error:", err.message);
@@ -3547,19 +3630,19 @@ if (research) {
 // });
 
 // ✅ Get logs from DB
-// app.get("/api/logs", async (req, res) => {
+// app.get("/api/Activitylogs", async (req, res) => {
 //   const logs = await AuditLog.find({}).sort({ createdAt: -1 });
 //   res.json(logs);
 // });
 
-{/* ✅ Get logs from File
-// app.get("/api/logs/file", (req, res) => {
+//✅ Get logs from File
+//  app.get("/api/Activitylogs/file", (req, res) => {
 //   fs.readFile(logFile, "utf8", (err, data) => {
-//     if (err) return res.status(500).json({ error: "Could not read logs.txt" });
-//     res.type("text/plain").send(data);
-//   });
-// });
-*/}
+//      if (err) return res.status(500).json({ error: "Could not read logs.txt" });
+//      res.type("text/plain").send(data);
+//    });
+//  });
+
 
 // ============================================================
 // 2. FIND THE EXISTING USER MODEL
@@ -6310,7 +6393,7 @@ app.get("/Esendstudent", async (req, res) => {
 
     const filter = {
       // PrincipalI_id: userId,
-      PrincipalI_id: new mongoose.Types.ObjectId(userId)
+      studentID: new mongoose.Types.ObjectId(userId)
     };
 
     const total = await EsendModel.countDocuments(filter);
@@ -17175,7 +17258,7 @@ const ResearchStor = multer({ storage: ResearchM ,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
   });
 
-app.post("/ResearchP", ResearchStor.array("files", 10), async (req, res) => {
+app.post("/ResearchP", ResearchStor.array("files", 6), async (req, res) => {
   try {
     console.log("📩 Received files:", req.files?.map(f => f.originalname));
     if (!req.files || req.files.length === 0) {
@@ -17961,6 +18044,108 @@ app.get("/Gete-Other", async (req, res) => {
     });
   } catch (error) {}
 });
+
+// Study Fulfillment filtered by selected year and reporting period
+app.get("/api/study-fulfillment", async (req, res) => {
+  try {
+    const year = Number(req.query.year);
+    const period = req.query.period || "Annual";
+
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid year",
+      });
+    }
+
+    let startDate;
+    let endDate;
+
+    switch (period) {
+      case "Annual":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      case "Q1":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year, 3, 1));
+        break;
+
+      case "Q2":
+        startDate = new Date(Date.UTC(year, 3, 1));
+        endDate = new Date(Date.UTC(year, 6, 1));
+        break;
+
+      case "Q3":
+        startDate = new Date(Date.UTC(year, 6, 1));
+        endDate = new Date(Date.UTC(year, 9, 1));
+        break;
+
+      case "Q4":
+        startDate = new Date(Date.UTC(year, 9, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      default:
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid reporting period",
+        });
+    }
+
+    const categories = [
+      "PHD Degree",
+      "Masters Degree",
+      "Bachelors Degree",
+      "Project",
+      "Survey",
+      "Other",
+    ];
+
+    const results = await ResearchMondel.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$StudyF",
+          total: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const counts = Object.fromEntries(
+      categories.map((category) => [category, 0])
+    );
+
+    results.forEach((item) => {
+      if (Object.prototype.hasOwnProperty.call(counts, item._id)) {
+        counts[item._id] = item.total;
+      }
+    });
+
+    return res.status(200).json({
+      status: "ok",
+      year,
+      period,
+      data: counts,
+    });
+  } catch (error) {
+    console.error("Study Fulfillment report error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to retrieve study fulfillment data",
+    });
+  }
+});
+
 app.get("/Gete-Qualitative", async (req, res) => {
   try {
     const Qualitative= ResearchMondel.find().or([{Rmethods:"Qualitative"}]).countDocuments().then((data) => {
@@ -17985,6 +18170,227 @@ app.get("/Gete-Mixed", async (req, res) => {
     });
   } catch (error) {}
 });
+// Research Methods filtered by year and reporting period
+app.get("/api/research-methods", async (req, res) => {
+  try {
+    const year = Number(req.query.year);
+    const period = req.query.period || "Annual";
+
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid year",
+      });
+    }
+
+    let startDate;
+    let endDate;
+
+    switch (period) {
+      case "Annual":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      case "Q1":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year, 3, 1));
+        break;
+
+      case "Q2":
+        startDate = new Date(Date.UTC(year, 3, 1));
+        endDate = new Date(Date.UTC(year, 6, 1));
+        break;
+
+      case "Q3":
+        startDate = new Date(Date.UTC(year, 6, 1));
+        endDate = new Date(Date.UTC(year, 9, 1));
+        break;
+
+      case "Q4":
+        startDate = new Date(Date.UTC(year, 9, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      default:
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid reporting period",
+        });
+    }
+
+    const categories = [
+      "Qualitative",
+      "Quantitative",
+      "Mixed",
+    ];
+
+    const results = await ResearchMondel.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$Rmethods",
+          total: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const counts = Object.fromEntries(
+      categories.map((category) => [category, 0])
+    );
+
+    results.forEach((item) => {
+      if (Object.prototype.hasOwnProperty.call(counts, item._id)) {
+        counts[item._id] = item.total;
+      }
+    });
+
+    return res.status(200).json({
+      status: "ok",
+      year,
+      period,
+      data: counts,
+    });
+  } catch (error) {
+    console.error("Research Methods report error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to retrieve research methods report",
+    });
+  }
+});
+
+// app.get("/Get-Research-Methodology", async (req, res) => {
+//   try {
+//     const { year, period = "Annual" } = req.query;
+
+//     const selectedYear = Number(year);
+
+//     if (
+//       !Number.isInteger(selectedYear) ||
+//       selectedYear < 2000 ||
+//       selectedYear > 2100
+//     ) {
+//       return res.status(400).json({
+//         status: "error",
+//         message: "Invalid reporting year",
+//       });
+//     }
+
+//     let startDate = new Date(Date.UTC(selectedYear, 0, 1));
+//     let endDate = new Date(Date.UTC(selectedYear + 1, 0, 1));
+
+//     // Annual
+//     if (period === "Annual") {
+//       // Keep the default date range
+//     }
+
+//     // Quarterly
+//     else if (/^Q[1-4]$/.test(period)) {
+//       const quarter = Number(period.substring(1));
+//       const startMonth = (quarter - 1) * 3;
+
+//       startDate = new Date(
+//         Date.UTC(selectedYear, startMonth, 1)
+//       );
+
+//       endDate = new Date(
+//         Date.UTC(selectedYear, startMonth + 3, 1)
+//       );
+//     }
+
+//     // Half-Yearly
+//     else if (period === "H1" || period === "H2") {
+//       const startMonth = period === "H1" ? 0 : 6;
+
+//       startDate = new Date(
+//         Date.UTC(selectedYear, startMonth, 1)
+//       );
+
+//       endDate = new Date(
+//         Date.UTC(selectedYear, startMonth + 6, 1)
+//       );
+//     }
+
+//     // Monthly: M01 to M12
+//     else if (/^M(0[1-9]|1[0-2])$/.test(period)) {
+//       const month = Number(period.substring(1)) - 1;
+
+//       startDate = new Date(
+//         Date.UTC(selectedYear, month, 1)
+//       );
+
+//       endDate = new Date(
+//         Date.UTC(selectedYear, month + 1, 1)
+//       );
+//     } else {
+//       return res.status(400).json({
+//         status: "error",
+//         message: "Invalid reporting period",
+//       });
+//     }
+
+//     const result = await ResearchMondel.aggregate([
+//       {
+//         $match: {
+//           createdAt: {
+//             $gte: startDate,
+//             $lt: endDate,
+//           },
+//           Rmethods: {
+//             $in: [
+//               "Qualitative",
+//               "Quantitative",
+//               "Mixed",
+//             ],
+//           },
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: "$Rmethods",
+//           total: { $sum: 1 },
+//         },
+//       },
+//     ]);
+
+//     const counts = {
+//       Qualitative: 0,
+//       Quantitative: 0,
+//       Mixed: 0,
+//     };
+
+//     result.forEach((item) => {
+//       counts[item._id] = item.total;
+//     });
+
+//     res.status(200).json({
+//       status: "ok",
+//       year: selectedYear,
+//       period,
+//       data: counts,
+//     });
+
+//   } catch (error) {
+//     console.error("Research methodology error:", error);
+
+//     res.status(500).json({
+//       status: "error",
+//       message: "Failed to retrieve research methodology",
+//     });
+//   }
+// });
+
+
+///////////////////////////////////////////////////////////////////////
 app.get("/Gete-National", async (req, res) => {
   try {
     const Mixed= ResearchMondel.find().or([{geographicA:"National"}]).countDocuments().then((data) => {
@@ -18074,6 +18480,116 @@ app.get("/Gete-Others", async (req, res) => {
     });
   } catch (error) {}
 });
+
+
+// Geographic Areas filtered by selected year and reporting period
+app.get("/api/geographic-areas", async (req, res) => {
+  try {
+    const year = Number(req.query.year);
+    const period = req.query.period || "Annual";
+
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid year",
+      });
+    }
+
+    let startDate;
+    let endDate;
+
+    switch (period) {
+      case "Annual":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      case "Q1":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year, 3, 1));
+        break;
+
+      case "Q2":
+        startDate = new Date(Date.UTC(year, 3, 1));
+        endDate = new Date(Date.UTC(year, 6, 1));
+        break;
+
+      case "Q3":
+        startDate = new Date(Date.UTC(year, 6, 1));
+        endDate = new Date(Date.UTC(year, 9, 1));
+        break;
+
+      case "Q4":
+        startDate = new Date(Date.UTC(year, 9, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      default:
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid reporting period",
+        });
+    }
+
+    const categories = [
+      "National",
+      "Region | City",
+      "Zone | Sub City",
+      "Woreda",
+      "Kebele",
+      "Program/research implementation woreda or kebele",
+      "Departmental",
+      "Facility",
+      "Global",
+      "Not representative",
+      "Others",
+    ];
+
+    const results = await ResearchMondel.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$geographicA",
+          total: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Initialize every category, including categories with zero records
+    const counts = Object.fromEntries(
+      categories.map((category) => [category, 0])
+    );
+
+    results.forEach((item) => {
+      if (Object.prototype.hasOwnProperty.call(counts, item._id)) {
+        counts[item._id] = item.total;
+      }
+    });
+
+    return res.status(200).json({
+      status: "ok",
+      year,
+      period,
+      data: counts,
+    });
+  } catch (error) {
+    console.error("Geographic areas report error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to retrieve geographic areas",
+    });
+  }
+});
+
+////////////////////////////////////////////////////////////////////////////////
 app.get("/Gete-Electronic", async (req, res) => {
   try {
     const Mixed= ResearchMondel.find().or([{Eelectronically:"yes"}]) .countDocuments().then((data) => {
@@ -18090,6 +18606,111 @@ app.get("/Gete-NoElectronic", async (req, res) => {
     });
   } catch (error) {}
 });
+
+// Electronic Data Collection filtered by year and reporting period
+app.get("/api/electronic-data-collection", async (req, res) => {
+  try {
+    const year = Number(req.query.year);
+    const period = req.query.period || "Annual";
+
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid year",
+      });
+    }
+
+    let startDate;
+    let endDate;
+
+    switch (period) {
+      case "Annual":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      case "Q1":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year, 3, 1));
+        break;
+
+      case "Q2":
+        startDate = new Date(Date.UTC(year, 3, 1));
+        endDate = new Date(Date.UTC(year, 6, 1));
+        break;
+
+      case "Q3":
+        startDate = new Date(Date.UTC(year, 6, 1));
+        endDate = new Date(Date.UTC(year, 9, 1));
+        break;
+
+      case "Q4":
+        startDate = new Date(Date.UTC(year, 9, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      default:
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid reporting period",
+        });
+    }
+
+    const results = await ResearchMondel.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $toLower: {
+              $trim: {
+                input: {
+                  $ifNull: ["$Eelectronically", ""],
+                },
+              },
+            },
+          },
+          total: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const counts = {
+      yes: 0,
+      no: 0,
+    };
+
+    results.forEach((item) => {
+      if (item._id === "yes") {
+        counts.yes = item.total;
+      } else if (item._id === "no") {
+        counts.no = item.total;
+      }
+    });
+
+    return res.status(200).json({
+      status: "ok",
+      year,
+      period,
+      data: counts,
+    });
+  } catch (error) {
+    console.error("Electronic Data Collection report error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to retrieve electronic data collection report",
+    });
+  }
+});
+
+/////////////////////////////////////////////////////////////////////
 app.get("/Gete-Access", async (req, res) => {
   try {
     const Mixed= ResearchMondel.find().or([{Dsharing:"Open access"}]) .countDocuments().then((data) => {
@@ -18113,6 +18734,106 @@ app.get("/Gete-Notaccessible", async (req, res) => {
       console.log(Mixed)
     });
   } catch (error) {}
+});
+
+// Data Accessibility filtered by year and reporting period
+app.get("/api/data-accessibility", async (req, res) => {
+  try {
+    const year = Number(req.query.year);
+    const period = req.query.period || "Annual";
+
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid year",
+      });
+    }
+
+    let startDate;
+    let endDate;
+
+    switch (period) {
+      case "Annual":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      case "Q1":
+        startDate = new Date(Date.UTC(year, 0, 1));
+        endDate = new Date(Date.UTC(year, 3, 1));
+        break;
+
+      case "Q2":
+        startDate = new Date(Date.UTC(year, 3, 1));
+        endDate = new Date(Date.UTC(year, 6, 1));
+        break;
+
+      case "Q3":
+        startDate = new Date(Date.UTC(year, 6, 1));
+        endDate = new Date(Date.UTC(year, 9, 1));
+        break;
+
+      case "Q4":
+        startDate = new Date(Date.UTC(year, 9, 1));
+        endDate = new Date(Date.UTC(year + 1, 0, 1));
+        break;
+
+      default:
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid reporting period",
+        });
+    }
+
+    const results = await ResearchMondel.aggregate([
+      {
+        $match: {
+          createdAt: {
+            $gte: startDate,
+            $lt: endDate,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $trim: {
+              input: {
+                $ifNull: ["$Dsharing", ""],
+              },
+            },
+          },
+          total: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const counts = {
+      "Open access": 0,
+      "Accessible upon request": 0,
+      "Not accessible": 0,
+    };
+
+    results.forEach((item) => {
+      if (Object.prototype.hasOwnProperty.call(counts, item._id)) {
+        counts[item._id] = item.total;
+      }
+    });
+
+    return res.status(200).json({
+      status: "ok",
+      year,
+      period,
+      data: counts,
+    });
+  } catch (error) {
+    console.error("Data Accessibility report error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to retrieve data accessibility report",
+    });
+  }
 });
  ////////////////////////////fetchinf Student proposal for reserch dashbored////////////
         app.get("/ProposalSubmit", async (req, res) => {
@@ -20232,6 +20953,7 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  timeout: 180000, // 3 minutes
 });
 
 const OutbreakI = multer.diskStorage({
@@ -20940,6 +21662,7 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  timeout: 180000, // 3 minutes
 });
 
 const SitRep = multer.diskStorage({
@@ -21243,6 +21966,7 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  timeout: 180000, // 3 minutes
 });
 
 const Cards = multer.diskStorage({
@@ -22572,6 +23296,7 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  timeout: 180000, // 3 minutes
 });
 
 const CardBottum = multer.diskStorage({
@@ -22676,6 +23401,7 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  timeout: 180000, // 3 minutes
 });
 
 const CardRiskComm = multer.diskStorage({
@@ -22778,6 +23504,7 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  timeout: 180000, // 3 minutes
 });
 
 const Guidlines = multer.diskStorage({
@@ -22845,6 +23572,7 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  timeout: 180000, // 3 minutes
 });
 
 const IRBPolicy = multer.diskStorage({
