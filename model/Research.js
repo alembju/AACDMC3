@@ -57,10 +57,10 @@ const ResearchSchema = new mongoose.Schema({
     selectedChoices: [String],
     Reasons: String,
     NewColl: String,
-    public_id: String,
-    url: String,
-    original_filename: String,
-    format: String,
+    // public_id: String,
+    // url: String,
+    // original_filename: String,
+    // format: String,
      // All five documents belong to this one proposal record
   documents: {
     supportingLetter: {

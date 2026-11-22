@@ -574,31 +574,76 @@ const recordAudit = async (
 //   });
 // };
 
+// const authenticateToken = (req, res, next) => {
+//   const authHeader = req.headers.authorization;
+
+//   const token = authHeader?.split(" ")[1];
+
+//   if (!token) {
+//     return res.status(401).json({
+//       message: "No token provided"
+//     });
+//   }
+
+//   jwt.verify(
+//     token,
+//     process.env.JWT_SECRET,
+//     (err, decoded) => {
+//       if (err) {
+//         return res.status(403).json({
+//           message: "Invalid or expired token"
+//         });
+//       }
+
+//       req.user = decoded;
+     
+
+//       console.log("AUTHENTICATED USER:", {
+//         userId: decoded.userId,
+//         id: decoded.id,
+//         studentID: decoded.studentID,
+//         email: decoded.email,
+//         userType: decoded.userType,
+//       });
+
+//       next();
+     
+//     }
+//   );
+// };
+
+// const jwt = require("jsonwebtoken");
+
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  const token = authHeader?.split(" ")[1];
+  const token =
+    authHeader && authHeader.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : null;
 
   if (!token) {
     return res.status(401).json({
-      message: "No token provided"
+      message: "No token provided",
     });
   }
 
-  jwt.verify(
-    token,
-    process.env.JWT_SECRET,
-    (err, decoded) => {
-      if (err) {
-        return res.status(403).json({
-          message: "Invalid or expired token"
-        });
-      }
-
-      req.user = decoded;
-      next();
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).json({
+        message: "Invalid or expired token",
+      });
     }
-  );
+
+    if (!decoded || !(decoded.userId || decoded.id || decoded.studentID)) {
+      return res.status(403).json({
+        message: "Token does not contain a valid user identity",
+      });
+    }
+
+    req.user = decoded;
+    next();
+  });
 };
 
 
@@ -618,6 +663,63 @@ const authorizeAuditAdmin = (req, res, next) => {
   }
 
   next();
+};
+
+
+const getAuthenticatedStudent = (req) => {
+  const user = req.user || {};
+
+  return {
+    studentUserId:
+      user.userId || user.id || user.studentID || "",
+
+    studentEmail: user.email || "",
+  };
+};
+
+// ==========================================
+// VERIFY APPLICATION OWNERSHIP
+// ==========================================
+
+const isApplicationOwner = (proposal, req) => {
+  const { studentUserId, studentEmail } =
+    getAuthenticatedStudent(req);
+
+  return (
+    (studentUserId &&
+      String(proposal.studentID) === String(studentUserId)) ||
+
+    (studentEmail &&
+      String(proposal.email).toLowerCase() ===
+        String(studentEmail).toLowerCase()) ||
+
+    (studentUserId &&
+      String(proposal.user) === String(studentUserId))
+  );
+};
+
+// ==========================================
+// FILE FORMAT
+// ==========================================
+
+const formatResearchDocument = (file, documentType = "") => {
+  return {
+    originalName: file.originalname || file.name || "Uploaded file",
+
+    filename: file.filename || file.originalname || file.name || "",
+
+    url: file.path || file.url || file.secure_url || "",
+
+    secure_url: file.secure_url || file.path || file.url || "",
+
+    documentType: documentType || file.fieldname || "Research Document",
+
+    mimetype: file.mimetype || "",
+
+    size: file.size || 0,
+
+    uploadedAt: new Date(),
+  };
 };
 
 // =====================================================
@@ -2647,9 +2749,10 @@ app.get("/research-users", async (req, res) => {
 });
  
 
-  /*****************************************************
- *   ==== assignment endpoint ====
- *****************************************************/
+/************************************************************
+ * ==== ASSIGN RESEARCH ENDPOINT ====
+ ************************************************************/
+
 app.post("/assign-research", async (req, res) => {
   try {
     const {
@@ -2680,8 +2783,7 @@ app.post("/assign-research", async (req, res) => {
     // CHECK PROPOSAL
     // ==========================================
 
-    const proposal =
-      await ResearchMondel.findById(proposalId);
+    const proposal = await ResearchMondel.findById(proposalId);
 
     if (!proposal) {
       return res.status(404).json({
@@ -2694,80 +2796,214 @@ app.post("/assign-research", async (req, res) => {
     // CHECK RESEARCH USER
     // ==========================================
 
-    const researchUser =
-      await User_Login.findOne({
-        _id: researchUserId,
-        userType: "Reserch",
-      });
+    const researchUser = await User_Login.findOne({
+      _id: researchUserId,
+      userType: "Reserch",
+    });
 
     if (!researchUser) {
       return res.status(404).json({
         status: "error",
-        message:
-          "Selected user is not a Research user",
+        message: "Selected user is not a Research/Reviwer user",
       });
     }
+// ==========================================
+// PREVENT DUPLICATE ASSIGNMENT
+// CHECK STUDENT RESPONSE FROM RESEARCH COLLECTION
+// ==========================================
 
-    // ==========================================
-    // PREVENT DUPLICATE ASSIGNMENT
-    // ==========================================
+const existingAssignment =
+  await ResearchAssignmentModel.findOne({
+    proposalId: proposalId,
+    researchUserId: researchUserId,
+  });
 
-    const existingAssignment =
-      await ResearchAssignmentModel.findOne({
-        proposalId: proposalId,
-        researchUserId: researchUserId,
-      });
+// ==========================================
+// EXISTING ASSIGNMENT FOUND
+// ==========================================
 
-    if (existingAssignment) {
-      return res.status(409).json({
-        status: "error",
-        message:
-          "This proposal is already assigned to this researcher.",
-      });
+if (existingAssignment) {
+
+  // ==========================================
+  // GET STUDENT RESPONSE FROM RESEARCH TABLE
+  // ==========================================
+
+  // IMPORTANT:
+  // proposalId is the MongoDB _id of the Research proposal.
+  // studentResponseStatus belongs to the Research collection.
+  // Do NOT search Research using researchUserId here.
+
+  const researcherResponse =
+    await ResearchMondel.findById(proposalId).lean();
+
+  // ==========================================
+  // GET RESPONSE STATUS
+  // ==========================================
+
+  const studentResponseStatus = String(
+    researcherResponse?.studentResponseStatus || "Not commented"
+  )
+    .trim()
+    .toLowerCase();
+
+  // ==========================================
+  // BLOCK IF NOT COMMENTED
+  // ==========================================
+
+  if (studentResponseStatus !== "commented") {
+
+    return res.status(409).json({
+      status: "error",
+      message:
+        "This proposal is already assigned to this researcher.",
+      studentResponseStatus:
+        researcherResponse?.studentResponseStatus || "Not commented",
+    });
+
+  }
+
+  // ==========================================
+  // ALLOW REASSIGNMENT IF COMMENTED
+  // ==========================================
+
+  existingAssignment.researchUserId =
+    researchUser._id;
+
+  existingAssignment.researchUserFname =
+    researchUser.fname;
+
+  existingAssignment.researchUserLname =
+    researchUser.lname;
+
+  existingAssignment.researchUserEmail =
+    researchUser.email;
+
+  existingAssignment.title =
+    proposal.Title || "Untitled Proposal";
+
+  existingAssignment.studentId =
+    proposal.studentID || "";
+
+  existingAssignment.studentFname =
+    proposal.PI || "";
+
+  existingAssignment.status =
+    "Assigned";
+
+  // Reset the assignment response status
+  // after the student has commented and it is reassigned.
+  existingAssignment.studentResponseStatus =
+    "Commented";
+
+  existingAssignment.message =
+    message || "";
+
+  existingAssignment.assignedAt =
+    new Date();
+
+  await existingAssignment.save();
+
+  // ==========================================
+  // UPDATE PROPOSAL ASSIGNMENT INFORMATION
+  // ==========================================
+
+  await ResearchMondel.findByIdAndUpdate(
+    proposalId,
+    {
+      assignedResearchUserId:
+        researchUser._id,
+
+      assignedResearchUserFname:
+        researchUser.fname,
+
+      assignedResearchUserLname:
+        researchUser.lname,
+
+      assignedResearchUserEmail:
+        researchUser.email,
+
+      assignmentStatus:
+        "Assigned",
+
+      assignedAt:
+        new Date(),
     }
+  );
+
+  // ==========================================
+  // AUDIT LOG: REASSIGNMENT
+  // ==========================================
+
+  await writeAuditLog(req, {
+    action: "Research proposal reassigned",
+
+    details:
+      `Reassigned research proposal "${proposal.Title || "Untitled Proposal"}" ` +
+      `to researcher ${researchUser.fname || ""} ${researchUser.lname || ""}`.trim() +
+      ` (${researchUser.email || "No email"}). ` +
+      `Previous student response status: Commented.`,
+
+    entityType: "Research Proposal",
+
+    entityId: String(proposal._id),
+
+    outcome: "success",
+  });
+
+  // ==========================================
+  // RESPONSE
+  // ==========================================
+
+  return res.status(200).json({
+    status: "ok",
+
+    message:
+      "Research proposal reassigned successfully.",
+
+    data: existingAssignment,
+  });
+
+}
 
     // ==========================================
-    // CREATE ASSIGNMENT
+    // CREATE NEW ASSIGNMENT
+    // NO EXISTING RECORD FOR THIS RESEARCHER
     // ==========================================
 
-    const assignment =
-      new ResearchAssignmentModel({
+    const assignment = new ResearchAssignmentModel({
+      proposalId: proposalId,
 
-        proposalId: proposalId,
+      researchUserId: researchUser._id,
 
-        researchUserId:
-          researchUser._id,
+      researchUserFname:
+        researchUser.fname,
 
-        researchUserFname:
-          researchUser.fname,
+      researchUserLname:
+        researchUser.lname,
 
-        researchUserLname:
-          researchUser.lname,
+      researchUserEmail:
+        researchUser.email,
 
-        researchUserEmail:
-          researchUser.email,
+      title:
+        proposal.Title || "Untitled Proposal",
 
-        title:
-          proposal.Title || "Untitled Proposal",
+      studentId:
+        proposal.studentID || "",
 
-        studentId:
-          proposal.studentID || "",
+      studentFname:
+        proposal.PI || "",
 
-        studentFname:
-          proposal.PI || "",
+      status: "Assigned",
 
-        status: "Assigned",
+      studentResponseStatus: "Not commented",
 
-        message:
-          message || "",
+      message: message || "",
 
-        assignedAt:
-          new Date(),
-
-      });
+      assignedAt: new Date(),
+    });
 
     // ==========================================
-    // SAVE ASSIGNMENT
+    // SAVE NEW ASSIGNMENT
     // ==========================================
 
     await assignment.save();
@@ -2801,7 +3037,6 @@ app.post("/assign-research", async (req, res) => {
 
     // ==========================================
     // AUDIT LOG: RESEARCH ASSIGNED
-
     // ==========================================
 
     await writeAuditLog(req, {
@@ -2824,35 +3059,54 @@ app.post("/assign-research", async (req, res) => {
     // ==========================================
 
     return res.status(200).json({
-
       status: "ok",
-
       message:
         "Research proposal assigned successfully",
-
       data: assignment,
-
     });
 
   } catch (error) {
-
     console.error(
       "ASSIGN RESEARCH ERROR:",
       error
     );
 
+    // ==========================================
+    // AUDIT LOG: SYSTEM ERROR
+    // ==========================================
+
+    try {
+      await writeAuditLog(req, {
+        action: "Research assignment error",
+
+        details:
+          `Failed to assign research proposal. Error: ${error.message}`,
+
+        entityType: "Research Proposal",
+
+        entityId: req.body?.proposalId
+          ? String(req.body.proposalId)
+          : "",
+
+        outcome: "failed",
+      });
+    } catch (auditError) {
+      console.error(
+        "Assignment error audit failed:",
+        auditError
+      );
+    }
+
+    // ==========================================
+    // ERROR RESPONSE
+    // ==========================================
+
     return res.status(500).json({
-
       status: "error",
-
       message:
         "Failed to assign research proposal",
-
-      error:
-        error.message,
-
+      error: error.message,
     });
-
   }
 });
     /////////////////////////////////////reserch assighnment ///////////
@@ -3031,6 +3285,23 @@ app.put("/research-assignment-status/:id", async (req, res) => {
 
   }
 
+});
+
+  // ==========================================
+    //fetch assignments from ResearchAssignment
+    // ==========================================
+
+
+app.get("/api/research-assignment/badges/:researcherId", authenticateToken, async (req, res) => {
+  try {
+    const researcherId = req.params.researcherId;
+    if (String(req.user.userId || req.user.id || req.user._id) !== String(researcherId)) return res.status(403).json({ status: "error", message: "Access denied." });
+    const assignments = await ResearchAssignmentModel.find({ researchUserId: researcherId }).select("proposalId researchUserId assignedAt studentResponseStatus status").lean();
+    return res.status(200).json({ status: "ok", data: assignments });
+  } catch (error) {
+    console.error("Error fetching researcher assignment badges:", error);
+    return res.status(500).json({ status: "error", message: "Failed to fetch assignment records." });
+  }
 });
    // ==========================================
     //FIND PROPOSALS ASSIGNED TO THIS RESEARCHER
@@ -6156,6 +6427,7 @@ app.post("/Esend", attached.single("file"), async (req, res) => {
       folder: "attached",
       resource_type: "auto",
     });
+    
 
     // Save data to MongoDB
     const savetoDb = await EsendModel.create({
@@ -6368,81 +6640,221 @@ res.json(results)
 
 
 ////get the login student informatio//////////////////////////////////////////
-app.get("/Esendstudent", async (req, res) => {
+// app.get("/Esendstudent", async (req, res) => {
+//   try {
+
+//     const { userId } = req.query;
+
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+
+//     const skip = (page - 1) * limit;
+
+//     if (!userId) {
+//       return res.status(400).json({
+//         status: "error",
+//         message: "User ID is required",
+//       });
+//     }
+
+//     console.log("Student User ID:", userId);
+
+//     // ============================================
+//     // FIND ONLY THIS STUDENT'S RECORDS
+//     // ============================================
+
+//     const filter = {
+//       // PrincipalI_id: userId,
+//       studentID: new mongoose.Types.ObjectId(userId)
+//     };
+
+//     const total = await EsendModel.countDocuments(filter);
+
+//     const result = await EsendModel.find(filter)
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit);
+
+//     console.log("Student confirmation records:", result);
+
+//     // ============================================
+//     // AUDIT LOG: STUDENT CONFIRMATION RECORDS VIEWED
+//     // ============================================
+
+//     await writeAuditLog(req, {
+//       action: "Student confirmation records viewed",
+
+//       details:
+//         `Viewed student confirmation records for student ID ${userId}. ` +
+//         `Records returned: ${result.length}. ` +
+//         `Total matching records: ${total}. ` +
+//         `Page: ${page}.`,
+
+//       entityType: "Student Confirmation",
+
+//       entityId: String(userId),
+
+//       outcome: "success",
+//     });
+
+//     res.json({
+//       status: "ok",
+//       result,
+//       pageCount: Math.ceil(total / limit),
+//       currentPage: page,
+//       total,
+//     });
+
+//   } catch (error) {
+
+//     console.error(
+//       "Error fetching student confirmation:",
+//       error
+//     );
+
+//     res.status(500).json({
+//       status: "error",
+//       message: "Server error",
+//       error: error.message,
+//     });
+//   }
+// });
+
+// =====================================================
+// GET STUDENT CONFIRMATION MESSAGES
+// GET /Esendstudent?userId=STUDENT_ID
+// =====================================================
+
+app.get("/Esendstudent", authenticateToken, async (req, res) => {
   try {
+    // ==========================================
+    // GET AUTHENTICATED USER
+    // ==========================================
 
-    const { userId } = req.query;
+    const authenticatedUser = req.user || {};
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const authenticatedStudentId =
+      authenticatedUser.userId ||
+      authenticatedUser.id ||
+      authenticatedUser._id ||
+      authenticatedUser.studentID;
 
-    const skip = (page - 1) * limit;
-
-    if (!userId) {
-      return res.status(400).json({
+    if (!authenticatedStudentId) {
+      return res.status(401).json({
         status: "error",
-        message: "User ID is required",
+        message: "Authenticated student ID was not found.",
       });
     }
 
-    console.log("Student User ID:", userId);
+    // ==========================================
+    // CHECK STUDENT ID
+    // ==========================================
 
-    // ============================================
-    // FIND ONLY THIS STUDENT'S RECORDS
-    // ============================================
+    if (
+      !mongoose.Types.ObjectId.isValid(
+        String(authenticatedStudentId)
+      )
+    ) {
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid authenticated student ID.",
+      });
+    }
 
-    const filter = {
-      // PrincipalI_id: userId,
-      studentID: new mongoose.Types.ObjectId(userId)
-    };
+    // ==========================================
+    // CHECK USER TYPE
+    // ==========================================
 
-    const total = await EsendModel.countDocuments(filter);
+    const userType = String(
+      authenticatedUser.userType ||
+      authenticatedUser.role ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
 
-    const result = await EsendModel.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    if (userType !== "student") {
+      return res.status(403).json({
+        status: "error",
+        message: "Only students can access their confirmation information.",
+      });
+    }
 
-    console.log("Student confirmation records:", result);
+    // ==========================================
+    // VERIFY REQUESTED USER ID
+    // ==========================================
 
-    // ============================================
-    // AUDIT LOG: STUDENT CONFIRMATION RECORDS VIEWED
-    // ============================================
+    const requestedUserId = req.query.userId;
 
-    await writeAuditLog(req, {
-      action: "Student confirmation records viewed",
+    if (
+      requestedUserId &&
+      String(requestedUserId) !== String(authenticatedStudentId)
+    ) {
+      return res.status(403).json({
+        status: "error",
+        message: "Access denied. You cannot view another student's confirmations.",
+      });
+    }
 
-      details:
-        `Viewed student confirmation records for student ID ${userId}. ` +
-        `Records returned: ${result.length}. ` +
-        `Total matching records: ${total}. ` +
-        `Page: ${page}.`,
+    // ==========================================
+    // FETCH STUDENT CONFIRMATION RECORDS
+    // ==========================================
 
-      entityType: "Student Confirmation",
+    const confirmations = await EsendModel.find({
+      PrincipalI_id: authenticatedStudentId,
+    })
+      .sort({
+        createdAt: -1,
+        _id: -1,
+      })
+      .lean();
 
-      entityId: String(userId),
+    // ==========================================
+    // RESPONSE
+    // ==========================================
 
-      outcome: "success",
-    });
-
-    res.json({
+    return res.status(200).json({
       status: "ok",
-      result,
-      pageCount: Math.ceil(total / limit),
-      currentPage: page,
-      total,
+      message: confirmations.length
+        ? "Student confirmation information retrieved successfully."
+        : "No confirmation information found.",
+      data: confirmations,
+      result: confirmations,
+      total: confirmations.length,
     });
 
   } catch (error) {
-
     console.error(
-      "Error fetching student confirmation:",
+      "GET STUDENT CONFIRMATION ERROR:",
       error
     );
 
-    res.status(500).json({
+    // ==========================================
+    // SYSTEM ERROR AUDIT
+    // ==========================================
+
+    try {
+      await recordAudit(req, {
+        action: "SYSTEM_ERROR",
+        category: "SYSTEM",
+        details: `Server error on ${req.method} ${req.originalUrl}`,
+        status: "failed",
+        errorMessage: error.message || "Unknown server error",
+      });
+    } catch (auditError) {
+      console.error(
+        "Student confirmation audit error:",
+        auditError
+      );
+    }
+
+    // ==========================================
+    // ERROR RESPONSE
+    // ==========================================
+
+    return res.status(500).json({
       status: "error",
-      message: "Server error",
+      message: "Failed to retrieve student confirmation information.",
       error: error.message,
     });
   }
@@ -17241,8 +17653,140 @@ app.get("/", async (req, res) => {
  /*****************************************************
  *   ==== DATA COLLECTION PROGRESS IN TO CLOUDINARY ====
  *****************************************************/
+// const ResearchM = multer.diskStorage({
+//   // destination: './public/uploads',
+//   filename: function (req, file, cb) {
+//     cb(
+//       null,
+//       file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+//     );
+//   },
+// });
+
+// require("./model/Research");
+
+// const ResearchMondel = mongoose.model("Researchs" )
+// const ResearchStor = multer({ storage: ResearchM ,
+//   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
+//   });
+
+// app.post("/ResearchP", ResearchStor.array("files", 6), async (req, res) => {
+//   try {
+//     console.log("📩 Received files:", req.files?.map(f => f.originalname));
+//     if (!req.files || req.files.length === 0) {
+//       return res.status(400).json({ message: "No files uploaded" });
+//     }
+//   const {studentID, NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
+
+//   const streamUpload = (fileBuffer) => {
+//       return new Promise((resolve, reject) => {
+//         const stream = cloudinary.uploader.upload_stream(
+//           { resource_type: "auto", folder: "ReserchProposal" },
+//           (error, result) => {
+//             if (error) {
+//               console.error("❌ Cloudinary error:", error);
+//               reject(error);
+//             } else {
+//               resolve(result);
+//             }
+//           }
+//         );
+//         stream.end(fileBuffer);
+//       });
+//     };
+
+
+//  const results = [];
+//   for (let file of req.files) {
+//   const uploaded = await streamUpload(file.path);
+//   console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
+//   const savedFile = await ResearchMondel.create({
+//     studentID,
+//     NCollege,
+//     Department,
+//     TDepartment,
+//     StudyF,
+//     Nadvisor,
+//     email,
+//     phone,
+//     PI,
+//     PIPhone,
+//     PIemail,
+//     Title,
+//     FocusA,
+//     SPeriodB,
+//     SPeriodE,
+//     ConductS,
+//     Rmethods,
+//     Study,
+//     Design,
+//     TDesign,
+//     geographicA,
+//     TGeographicA,
+//     Slocation,
+//     Gender,
+//     TGender,
+//     populations,
+//     MicroD,
+//     Eelectronically,
+//     Tools,
+//     Tcollection,
+//     TTcollection,
+//     Budget,
+//     Geocoordinate,
+//     Groups,
+//     Dsharing,
+//     selectedChoices,
+//     Reasons,
+//     NewColl,
+//     public_id: uploaded.public_id,
+//     url: uploaded.secure_url,
+//     original_filename: uploaded.original_filename,
+//     format: uploaded.format,
+//    });
+//       results.push(savedFile);
+//     }
+
+//     // ==========================================
+//     // AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
+//     // ==========================================
+
+//    // ==========================================
+// // AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
+// // ==========================================
+
+// await recordAudit(req, {
+//   action: "RESEARCH_PROPOSAL_SUBMITTED",
+//   category: "RESEARCH",
+//   details:
+//     `Submitted research proposal "${Title || "Untitled Proposal"}". ` +
+//     `Student ID: ${studentID || "Not provided"}. ` +
+//     `College: ${NCollege || "Not provided"}. ` +
+//     `Principal Investigator: ${PI || "Not provided"}. ` +
+//     `Number of uploaded files: ${req.files.length}.`,
+//   status: "success"
+// });
+
+//    res.json({ message: "Uploaded & saved successfully", files: results });
+//   } catch (err) {
+//     console.error("❌ Upload error (server):", err);
+//     res.status(500).json({ message: "Upload failed", error: err.message });
+//   }
+// });
+
+// ==========================================
+// RESEARCH PROPOSAL FILE UPLOAD CONFIGURATION
+// ==========================================
+
 const ResearchM = multer.diskStorage({
-  // destination: './public/uploads',
+  destination: function (req, file, cb) {
+    const uploadPath = "./public/uploads";
+
+    fs.mkdirSync(uploadPath, { recursive: true });
+
+    cb(null, uploadPath);
+  },
+
   filename: function (req, file, cb) {
     cb(
       null,
@@ -17253,115 +17797,303 @@ const ResearchM = multer.diskStorage({
 
 require("./model/Research");
 
-const ResearchMondel = mongoose.model("Researchs" )
-const ResearchStor = multer({ storage: ResearchM ,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit
-  });
+const ResearchMondel = mongoose.model("Researchs");
 
-app.post("/ResearchP", ResearchStor.array("files", 6), async (req, res) => {
-  try {
-    console.log("📩 Received files:", req.files?.map(f => f.originalname));
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: "No files uploaded" });
-    }
-  const {studentID, NCollege,Department,TDepartment,StudyF,Nadvisor,email,phone,PI,PIPhone,PIemail,Title,FocusA,SPeriodB,SPeriodE,ConductS,Rmethods,Study,Design,TDesign,geographicA,TGeographicA,Slocation,Gender,TGender,populations,MicroD,Eelectronically,Tools,Tcollection,TTcollection,Budget,Geocoordinate,Groups,Dsharing,selectedChoices,Reasons,NewColl } = req.body;
+const ResearchStor = multer({
+  storage: ResearchM,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // Maximum 10 MB per file
+    files: 5,
+  },
+});
 
-  const streamUpload = (fileBuffer) => {
-      return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { resource_type: "auto", folder: "ReserchProposal" },
-          (error, result) => {
-            if (error) {
-              console.error("❌ Cloudinary error:", error);
-              reject(error);
-            } else {
-              resolve(result);
-            }
-          }
-        );
-        stream.end(fileBuffer);
-      });
-    };
-
-
- const results = [];
-  for (let file of req.files) {
-  const uploaded = await streamUpload(file.path);
-  console.log("✅ Cloudinary uploaded:", uploaded.secure_url);
-  const savedFile = await ResearchMondel.create({
-    studentID,
-    NCollege,
-    Department,
-    TDepartment,
-    StudyF,
-    Nadvisor,
-    email,
-    phone,
-    PI,
-    PIPhone,
-    PIemail,
-    Title,
-    FocusA,
-    SPeriodB,
-    SPeriodE,
-    ConductS,
-    Rmethods,
-    Study,
-    Design,
-    TDesign,
-    geographicA,
-    TGeographicA,
-    Slocation,
-    Gender,
-    TGender,
-    populations,
-    MicroD,
-    Eelectronically,
-    Tools,
-    Tcollection,
-    TTcollection,
-    Budget,
-    Geocoordinate,
-    Groups,
-    Dsharing,
-    selectedChoices,
-    Reasons,
-    NewColl,
-    public_id: uploaded.public_id,
-    url: uploaded.secure_url,
-    original_filename: uploaded.original_filename,
-    format: uploaded.format,
-   });
-      results.push(savedFile);
-    }
-
-    // ==========================================
-    // AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
-    // ==========================================
-
-   // ==========================================
-// AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
+// ==========================================
+// CLOUDINARY UPLOAD FUNCTION
 // ==========================================
 
-await recordAudit(req, {
-  action: "RESEARCH_PROPOSAL_SUBMITTED",
-  category: "RESEARCH",
-  details:
-    `Submitted research proposal "${Title || "Untitled Proposal"}". ` +
-    `Student ID: ${studentID || "Not provided"}. ` +
-    `College: ${NCollege || "Not provided"}. ` +
-    `Principal Investigator: ${PI || "Not provided"}. ` +
-    `Number of uploaded files: ${req.files.length}.`,
-  status: "success"
-});
+const streamUpload = (fileBuffer, originalName) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "auto",
+        folder: "ReserchProposal",
+        use_filename: true,
+        unique_filename: true,
+      },
+      (error, result) => {
+        if (error) {
+          console.error("Cloudinary upload error:", error);
+          reject(error);
+        } else {
+          resolve(result);
+        }
+      }
+    );
 
-   res.json({ message: "Uploaded & saved successfully", files: results });
-  } catch (err) {
-    console.error("❌ Upload error (server):", err);
-    res.status(500).json({ message: "Upload failed", error: err.message });
+    stream.end(fileBuffer);
+  });
+};
+
+// ==========================================
+// RESEARCH PROPOSAL SUBMISSION
+// ALL FIVE FILES IN ONE MONGODB RECORD
+// ==========================================
+
+app.post(
+  "/ResearchP",
+  ResearchStor.fields([
+    { name: "supportingLetter", maxCount: 1 },
+    { name: "kebeleID", maxCount: 1 },
+    { name: "cvPDF", maxCount: 1 },
+    { name: "proposalPDF", maxCount: 1 },
+    { name: "proposalWord", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const temporaryFiles = [];
+    const cloudinaryUploads = [];
+
+    try {
+      console.log("Received document fields:", Object.keys(req.files || {}));
+
+      // ==========================================
+      // VALIDATE ALL FIVE DOCUMENTS
+      // ==========================================
+
+      const requiredFields = [
+        "supportingLetter",
+        "kebeleID",
+        "cvPDF",
+        "proposalPDF",
+        "proposalWord",
+      ];
+
+      for (const field of requiredFields) {
+        if (!req.files?.[field]?.[0]) {
+          return res.status(400).json({
+            status: "error",
+            message: `Missing required document: ${field}`,
+          });
+        }
+      }
+
+      const {
+        studentID,
+        NCollege,
+        Department,
+        TDepartment,
+        StudyF,
+        Nadvisor,
+        email,
+        phone,
+        PI,
+        PIPhone,
+        PIemail,
+        Title,
+        FocusA,
+        SPeriodB,
+        SPeriodE,
+        ConductS,
+        Rmethods,
+        Study,
+        Design,
+        TDesign,
+        geographicA,
+        TGeographicA,
+        Slocation,
+        Gender,
+        TGender,
+        populations,
+        MicroD,
+        Eelectronically,
+        Tools,
+        Tcollection,
+        TTcollection,
+        Budget,
+        Geocoordinate,
+        Groups,
+        Dsharing,
+        selectedChoices,
+        Reasons,
+        NewColl,
+      } = req.body;
+
+      // ==========================================
+      // MAP FILES TO DOCUMENT TYPES
+      // ==========================================
+
+      const documentFields = {
+        supportingLetter: req.files.supportingLetter[0],
+        kebeleID: req.files.kebeleID[0],
+        cvPDF: req.files.cvPDF[0],
+        proposalPDF: req.files.proposalPDF[0],
+        proposalWord: req.files.proposalWord[0],
+      };
+
+      // ==========================================
+      // UPLOAD ALL FIVE FILES TO CLOUDINARY
+      // ==========================================
+
+      const documents = {};
+
+      for (const [documentType, file] of Object.entries(documentFields)) {
+        temporaryFiles.push(file.path);
+
+        const fileBuffer = await fs.promises.readFile(file.path);
+
+        const uploaded = await streamUpload(
+          fileBuffer,
+          file.originalname
+        );
+
+        cloudinaryUploads.push({
+            public_id: uploaded.public_id,
+            resource_type: uploaded.resource_type,
+          });
+
+        documents[documentType] = {
+          public_id: uploaded.public_id,
+          url: uploaded.secure_url,
+          original_filename: file.originalname,
+          format: uploaded.format || path.extname(file.originalname).replace(".", ""),
+        };
+
+        console.log(
+          `Uploaded ${documentType}:`,
+          uploaded.secure_url
+        );
+      }
+
+      // ==========================================
+      // SAVE ONE PROPOSAL RECORD IN MONGODB
+      // ==========================================
+
+      const savedProposal = await ResearchMondel.create({
+        studentID,
+        NCollege,
+        Department,
+        TDepartment,
+        StudyF,
+        Nadvisor,
+        email,
+        phone,
+        PI,
+        PIPhone,
+        PIemail,
+        Title,
+        FocusA,
+        SPeriodB,
+        SPeriodE,
+        ConductS,
+        Rmethods,
+        Study,
+        Design,
+        TDesign,
+        geographicA,
+        TGeographicA,
+        Slocation,
+        Gender,
+        TGender,
+        populations,
+        MicroD,
+        Eelectronically,
+        Tools,
+        Tcollection,
+        TTcollection,
+        Budget,
+        Geocoordinate,
+        Groups,
+        Dsharing,
+        selectedChoices,
+        Reasons,
+        NewColl,
+
+        // All five documents saved in this one record
+        documents,
+
+        // Keep legacy fields if your existing frontend uses them
+        public_id: documents.proposalPDF.public_id,
+        url: documents.proposalPDF.url,
+        original_filename: documents.proposalPDF.original_filename,
+        format: documents.proposalPDF.format,
+      });
+
+      // ==========================================
+      // AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
+      // ==========================================
+
+      try {
+        await recordAudit(req, {
+          action: "RESEARCH_PROPOSAL_SUBMITTED",
+          category: "RESEARCH",
+          details:
+            `Submitted research proposal "${Title || "Untitled Proposal"}". ` +
+            `Student ID: ${studentID || "Not provided"}. ` +
+            `College: ${NCollege || "Not provided"}. ` +
+            `Principal Investigator: ${PI || "Not provided"}. ` +
+            `Number of uploaded files: 5.`,
+          status: "success",
+        });
+      } catch (auditError) {
+        console.error("Audit logging error:", auditError);
+      }
+
+      // ==========================================
+      // REMOVE TEMPORARY LOCAL FILES
+      // ==========================================
+
+      await Promise.all(
+        temporaryFiles.map((filePath) =>
+          fs.promises.unlink(filePath).catch(() => {})
+        )
+      );
+
+      return res.status(201).json({
+        status: "success",
+        message: "Proposal and all five documents saved successfully.",
+        proposal: savedProposal,
+        documents: savedProposal.documents,
+      });
+
+    } catch (err) {
+      console.error("Research proposal upload error:", err);
+
+      // Remove temporary files
+      await Promise.all(
+        temporaryFiles.map((filePath) =>
+          fs.promises.unlink(filePath).catch(() => {})
+        )
+      );
+
+      // Remove Cloudinary files if the operation failed
+      await Promise.all(
+        cloudinaryUploads.map((publicId) =>
+          cloudinary.uploader
+            .destroy(publicId, { resource_type: "raw" })
+            .catch((cloudinaryError) =>
+              console.error("Cloudinary cleanup error:", cloudinaryError)
+            )
+        )
+      );
+
+      return res.status(500).json({
+        status: "error",
+        message: "Proposal upload failed.",
+        error: err.message,
+      });
+    }
   }
+);
+
+///////////////////////////////////////////////////////////////////
+app.get("/api/research/:id", async (req, res) => {
+  try {
+    ResearchMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
 });
 
+/////////////////////////////////////////////////////////////////
 app.get(
   "/api/logs",
   authenticateToken,
@@ -17526,54 +18258,382 @@ app.get(
 // ==========================================
 
 // GET /api/research/my — Fetch all research proposals owned by the authenticated student
+// app.get("/api/research/my", authenticateToken, async (req, res) => {
+//   try {
+//     const studentUserId = req.user.userId || req.user.id || req.user.studentID;
+//     const studentEmail = req.user.email;
+
+//     const query = {
+//       $or: [
+//         { studentID: studentUserId },
+//         { email: studentEmail },
+//         { user: studentUserId }
+//       ]
+//     };
+
+//     const applications = await ResearchMondel.find(query).sort({ updatedAt: -1, createdAt: -1 });
+//     return res.status(200).json(applications);
+//   } catch (error) {
+//     console.error("Error fetching user proposals:", error);
+//     return res.status(500).json({ message: "Failed to load your research applications." });
+//   }
+// });
+
+// // GET /api/research/:id — Fetch a single proposal ensuring student ownership
+// app.get("/api/research/:id", authenticateToken, async (req, res) => {
+//   try {
+//     const studentUserId = req.user.userId || req.user.id || req.user.studentID;
+//     const studentEmail = req.user.email;
+//     const proposalId = req.params.id;
+
+//     const proposal = await ResearchMondel.findById(proposalId);
+//     if (!proposal) {
+//       return res.status(404).json({ message: "Research proposal application not found." });
+//     }
+
+//     const isOwner =
+//       String(proposal.studentID) === String(studentUserId) ||
+//       String(proposal.email) === String(studentEmail) ||
+//       String(proposal.user) === String(studentUserId);
+
+//     if (!isOwner) {
+//       return res.status(403).json({ message: "Access denied: You can only view your own applications." });
+//     }
+
+//     return res.status(200).json({
+//   application: proposal.toObject(),
+// });
+//   } catch (error) {
+//     console.error("Error fetching proposal:", error);
+//     return res.status(500).json({ message: "Server error fetching the application details." });
+//   }
+// });
+
+//////////////////////////////////////this one is the working one//////////////
+// app.get("/api/research/my", authenticateToken, async (req, res) => {
+//   try {
+//     const studentUserId =
+//       req.user.userId || req.user.id || req.user.studentID;
+
+//     const studentEmail = req.user.email;
+
+//     const query = {
+//       $or: [
+//         { studentID: studentUserId },
+//         { email: studentEmail },
+//         { user: studentUserId }
+//       ]
+//     };
+
+//     console.log("STUDENT ID:", studentUserId);
+// console.log("STUDENT EMAIL:", studentEmail);
+
+//     const applications = await ResearchMondel.find(query)
+//       .sort({ updatedAt: -1, createdAt: -1 })
+//       .lean();
+
+//     return res.status(200).json(applications);
+
+//   } catch (error) {
+//     console.error("Error fetching user proposals:", error);
+
+//     return res.status(500).json({
+//       message: "Failed to load your research applications."
+//     });
+//   }
+// });
+
+// ==========================================
+// GET MY PREVIOUS RESEARCH APPLICATIONS
+// ==========================================
+
 app.get("/api/research/my", authenticateToken, async (req, res) => {
   try {
-    const studentUserId = req.user.userId || req.user.id || req.user.studentID;
-    const studentEmail = req.user.email;
+    const { studentUserId, studentEmail } =
+      getAuthenticatedStudent(req);
 
-    const query = {
-      $or: [
+    if (!studentUserId && !studentEmail) {
+      return res.status(401).json({
+        message: "Authenticated student information is missing.",
+      });
+    }
+
+    const conditions = [];
+
+    if (studentUserId) {
+      conditions.push(
         { studentID: studentUserId },
-        { email: studentEmail },
         { user: studentUserId }
-      ]
-    };
+      );
+    }
 
-    const applications = await ResearchMondel.find(query).sort({ updatedAt: -1, createdAt: -1 });
+    if (studentEmail) {
+      conditions.push({
+        email: {
+          $regex: `^${studentEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+          $options: "i",
+        },
+      });
+    }
+
+    const applications = await ResearchMondel.find({
+      $or: conditions,
+    })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .select(
+        "_id studentID email Title NCollege Department createdAt updatedAt documents files uploadedFiles"
+      )
+      .lean();
+
     return res.status(200).json(applications);
+
   } catch (error) {
-    console.error("Error fetching user proposals:", error);
-    return res.status(500).json({ message: "Failed to load your research applications." });
+    console.error(
+      "Error fetching user's research applications:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to load your research applications.",
+    });
   }
 });
 
-// GET /api/research/:id — Fetch a single proposal ensuring student ownership
+// ==========================================
+// GET A SINGLE RESEARCH APPLICATION
+// IMPORTANT: Keep this route AFTER /my this one is the working api
+// ==========================================
+
+// app.get("/api/research/:id", authenticateToken, async (req, res) => {
+//   try {
+//     const proposalId = req.params.id;
+
+//     const proposal = await ResearchMondel.findById(proposalId);
+
+//     if (!proposal) {
+//       return res.status(404).json({
+//         message: "Research proposal application not found."
+//       });
+//     }
+
+//     const studentUserId =
+//       req.user.userId || req.user.id || req.user.studentID;
+
+//     const studentEmail = req.user.email;
+
+//     const isOwner =
+//       String(proposal.studentID) === String(studentUserId) ||
+//       String(proposal.email) === String(studentEmail) ||
+//       String(proposal.user) === String(studentUserId);
+
+//     if (!isOwner) {
+//       return res.status(403).json({
+//         message: "Access denied: You can only view your own applications."
+//       });
+//     }
+
+//     return res.status(200).json({
+//       application: proposal.toObject()
+//     });
+
+//   } catch (error) {
+//     console.error("Error fetching proposal:", error);
+
+//     return res.status(500).json({
+//       message: "Server error fetching the application details."
+//     });
+//   }
+// });
+
+
+
+app.post(
+  "/ResearchP",
+  authenticateToken,
+  ResearchStor.array("files", 10),
+  async (req, res) => {
+    try {
+      const { studentUserId, studentEmail } =
+        getAuthenticatedStudent(req);
+
+      if (!studentUserId) {
+        return res.status(401).json({
+          message: "Student ID not found in authentication token.",
+        });
+      }
+
+      const uploadedFiles = req.files || [];
+
+      // Frontend requires at least 4 files for new submissions
+      if (uploadedFiles.length < 4) {
+        return res.status(400).json({
+          message: "At least four documents are required.",
+        });
+      }
+
+      // ==========================================
+      // PARSE JSON FORM FIELDS
+      // ==========================================
+
+      const parseField = (value, fallback = "") => {
+        if (value === undefined || value === null || value === "") {
+          return fallback;
+        }
+
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value;
+        }
+      };
+
+      // ==========================================
+      // DOCUMENTS
+      // ==========================================
+
+      const documents = uploadedFiles.map((file) => ({
+        originalName: file.originalname || file.name || "",
+        filename: file.filename || file.originalname || "",
+        url: file.path || file.url || file.secure_url || "",
+        secure_url: file.secure_url || file.path || file.url || "",
+        documentType: file.fieldname || "Research Document",
+        mimetype: file.mimetype || "",
+        size: file.size || 0,
+        uploadedAt: new Date(),
+      }));
+
+      // ==========================================
+      // CREATE PROPOSAL
+      // ==========================================
+
+      const newProposal = new ResearchMondel({
+        studentID: studentUserId,
+
+        user: studentUserId,
+
+        email: req.body.email || studentEmail,
+
+        NCollege: req.body.NCollege,
+        Department: req.body.Department,
+        TDepartment: req.body.TDepartment,
+        StudyF: req.body.StudyF,
+        Nadvisor: req.body.Nadvisor,
+
+        phone: req.body.phone,
+
+        PI: req.body.PI,
+        PIPhone: req.body.PIPhone,
+        PIemail: req.body.PIemail,
+
+        Title: req.body.Title,
+
+        FocusA: parseField(req.body.FocusA, []),
+
+        SPeriodB: req.body.SPeriodB || null,
+        SPeriodE: req.body.SPeriodE || null,
+
+        ConductS: req.body.ConductS,
+        Rmethods: req.body.Rmethods,
+        Study: req.body.Study,
+        Design: req.body.Design,
+        TDesign: req.body.TDesign,
+
+        geographicA: req.body.geographicA,
+        TGeographicA: req.body.TGeographicA,
+        Slocation: req.body.Slocation,
+
+        Gender: req.body.Gender,
+        TGender: req.body.TGender,
+
+        populations: parseField(req.body.populations, ""),
+
+        MicroD: req.body.MicroD,
+        Eelectronically: req.body.Eelectronically,
+        Tools: req.body.Tools,
+
+        Tcollection: req.body.Tcollection,
+        TTcollection: req.body.TTcollection,
+
+        Budget: req.body.Budget,
+        Geocoordinate: req.body.Geocoordinate,
+
+        Groups: req.body.Groups,
+        Dsharing: req.body.Dsharing,
+        Reasons: req.body.Reasons,
+
+        selectedChoices: parseField(
+          req.body.selectedChoices,
+          []
+        ),
+
+        NewColl: req.body.NewColl,
+
+        documents,
+
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await newProposal.save();
+
+      return res.status(201).json({
+        message: "Research proposal submitted successfully.",
+        application: newProposal,
+      });
+
+    } catch (error) {
+      console.error("Research proposal submission error:", error);
+
+      return res.status(500).json({
+        message: "Failed to submit research proposal.",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// ==========================================
+// GET ONE RESEARCH APPLICATION
+// ==========================================
+
 app.get("/api/research/:id", authenticateToken, async (req, res) => {
   try {
-    const studentUserId = req.user.userId || req.user.id || req.user.studentID;
-    const studentEmail = req.user.email;
     const proposalId = req.params.id;
 
+    if (!mongoose.Types.ObjectId.isValid(proposalId)) {
+      return res.status(400).json({
+        message: "Invalid research application ID.",
+      });
+    }
+
     const proposal = await ResearchMondel.findById(proposalId);
+
     if (!proposal) {
-      return res.status(404).json({ message: "Research proposal application not found." });
+      return res.status(404).json({
+        message: "Research proposal application not found.",
+      });
     }
 
-    const isOwner =
-      String(proposal.studentID) === String(studentUserId) ||
-      String(proposal.email) === String(studentEmail) ||
-      String(proposal.user) === String(studentUserId);
-
-    if (!isOwner) {
-      return res.status(403).json({ message: "Access denied: You can only view your own applications." });
+    // Security: only the owner can access their application
+    if (!isApplicationOwner(proposal, req)) {
+      return res.status(403).json({
+        message: "Access denied: You can only view your own applications.",
+      });
     }
 
-    return res.status(200).json({ application: proposal });
+    return res.status(200).json({
+      application: proposal,
+    });
+
   } catch (error) {
-    console.error("Error fetching proposal:", error);
-    return res.status(500).json({ message: "Server error fetching the application details." });
+    console.error("Error fetching research proposal:", error);
+
+    return res.status(500).json({
+      message: "Server error fetching the application details.",
+    });
   }
 });
+
 
 // PUT /api/research/:id — Update an existing proposal with document replacement support
 // app.put(
@@ -17683,142 +18743,418 @@ app.get("/api/research/:id", authenticateToken, async (req, res) => {
 // This PUT route marks a proposal as "Commented" only after the
 // authenticated owner successfully edits and saves the proposal.
 
+// app.put(
+//   "/api/research/:id",
+//   authenticateToken,
+//   upload.array("replacementFiles"),
+//   async (req, res) => {
+//     try {
+//       const studentUserId = req.user.userId || req.user.id || req.user.studentID;
+//       const studentEmail = req.user.email;
+//       const proposalId = req.params.id;
+
+//       const proposal = await ResearchMondel.findById(proposalId);
+//       if (!proposal) {
+//         return res.status(404).json({ message: "Research proposal not found." });
+//       }
+
+//       // Only the student who owns this proposal may edit it.
+//       const isOwner =
+//         String(proposal.studentID) === String(studentUserId) ||
+//         String(proposal.email) === String(studentEmail) ||
+//         String(proposal.user) === String(studentUserId);
+
+//       if (!isOwner) {
+//         return res.status(403).json({
+//           message: "Access denied: You can only update your own applications."
+//         });
+//       }
+
+//       const textFields = [
+//         "NCollege", "Department", "TDepartment", "StudyF", "Nadvisor", "email", "phone",
+//         "PI", "PIPhone", "PIemail", "Title", "ConductS", "Rmethods", "Study", "Design",
+//         "TDesign", "geographicA", "TGeographicA", "Slocation", "Gender", "TGender",
+//         "populations", "MicroD", "Eelectronically", "Tools", "Tcollection", "TTcollection",
+//         "Budget", "Geocoordinate", "Groups", "Dsharing", "Reasons", "NewColl"
+//       ];
+
+//       textFields.forEach((field) => {
+//         if (req.body[field] !== undefined) {
+//           proposal[field] = req.body[field];
+//         }
+//       });
+
+//       if (req.body.FocusA !== undefined) {
+//         try {
+//           proposal.FocusA = JSON.parse(req.body.FocusA);
+//         } catch (_) {
+//           proposal.FocusA = req.body.FocusA;
+//         }
+//       }
+
+//       if (req.body.selectedChoices !== undefined) {
+//         try {
+//           proposal.selectedChoices = JSON.parse(req.body.selectedChoices);
+//         } catch (_) {
+//           proposal.selectedChoices = req.body.selectedChoices;
+//         }
+//       }
+
+//       if (req.body.SPeriodB) proposal.SPeriodB = new Date(req.body.SPeriodB);
+//       if (req.body.SPeriodE) proposal.SPeriodE = new Date(req.body.SPeriodE);
+
+//       const replacementDocumentIdsRaw = req.body.replacementDocumentIds;
+//       let replacementDocumentIds = [];
+
+//       if (replacementDocumentIdsRaw) {
+//         try {
+//           replacementDocumentIds = JSON.parse(replacementDocumentIdsRaw);
+//         } catch (_) {
+//           replacementDocumentIds = Array.isArray(replacementDocumentIdsRaw)
+//             ? replacementDocumentIdsRaw
+//             : [replacementDocumentIdsRaw];
+//         }
+//       }
+
+//       const uploadedReplacements = req.files || [];
+//       let currentDocuments = proposal.documents || proposal.files || [];
+
+//       replacementDocumentIds.forEach((docIdToReplace, index) => {
+//         const newUploadedFile = uploadedReplacements[index];
+//         if (!newUploadedFile) return;
+
+//         const docIndex = currentDocuments.findIndex(
+//           (doc) => String(doc._id || doc.id) === String(docIdToReplace)
+//         );
+
+//         const newDocObj = {
+//           _id: docIdToReplace,
+//           originalName: newUploadedFile.originalname,
+//           filename: newUploadedFile.filename,
+//           path: newUploadedFile.path,
+//           url: `/uploads/${newUploadedFile.filename}`,
+//           updatedAt: new Date()
+//         };
+
+//         if (docIndex !== -1) {
+//           currentDocuments[docIndex] = {
+//             ...currentDocuments[docIndex],
+//             ...newDocObj
+//           };
+//         } else {
+//           currentDocuments.push(newDocObj);
+//         }
+//       });
+
+//       proposal.documents = currentDocuments;
+
+//       // IMPORTANT: do not overwrite assignmentStatus / reviewStatus / approval status.
+//       // This separate field tells the secretary that the student edited and resaved it.
+//       proposal.studentResponseStatus = "Commented";
+//       proposal.studentRespondedAt = new Date();
+//       proposal.updatedAt = new Date();
+
+// await proposal.save();
+
+// // ==========================================
+// // AUDIT LOG: RESEARCH PROPOSAL UPDATED
+// // ==========================================
+
+//     await recordAudit(req, {
+//       action: "RESEARCH_PROPOSAL_UPDATED",
+//       category: "RESEARCH",
+//       details: `Research proposal "${proposal.Title || "Untitled Proposal"}" updated by student. Student ID: ${proposal.studentID || "Not provided"}.`,
+//       status: "success"
+//     });
+
+//     return res.status(200).json({
+//         message: "Research application updated successfully. It is now marked as Commented.",
+//         application: proposal
+//       });
+//     } catch (error) {
+//       console.error("Error updating proposal:", error);
+//       return res.status(500).json({
+//         message: "Failed to update proposal application."
+//       });
+//     }
+//   }
+// );
+
+
+
+// ==========================================
+// UPDATE EXISTING RESEARCH APPLICATION
+// ==========================================
+
 app.put(
   "/api/research/:id",
   authenticateToken,
-  upload.array("replacementFiles"),
+  ResearchStor.array("replacementFiles", 10),
   async (req, res) => {
     try {
-      const studentUserId = req.user.userId || req.user.id || req.user.studentID;
-      const studentEmail = req.user.email;
       const proposalId = req.params.id;
 
-      const proposal = await ResearchMondel.findById(proposalId);
-      if (!proposal) {
-        return res.status(404).json({ message: "Research proposal not found." });
-      }
-
-      // Only the student who owns this proposal may edit it.
-      const isOwner =
-        String(proposal.studentID) === String(studentUserId) ||
-        String(proposal.email) === String(studentEmail) ||
-        String(proposal.user) === String(studentUserId);
-
-      if (!isOwner) {
-        return res.status(403).json({
-          message: "Access denied: You can only update your own applications."
+      if (!mongoose.Types.ObjectId.isValid(proposalId)) {
+        return res.status(400).json({
+          message: "Invalid research application ID.",
         });
       }
 
-      const textFields = [
-        "NCollege", "Department", "TDepartment", "StudyF", "Nadvisor", "email", "phone",
-        "PI", "PIPhone", "PIemail", "Title", "ConductS", "Rmethods", "Study", "Design",
-        "TDesign", "geographicA", "TGeographicA", "Slocation", "Gender", "TGender",
-        "populations", "MicroD", "Eelectronically", "Tools", "Tcollection", "TTcollection",
-        "Budget", "Geocoordinate", "Groups", "Dsharing", "Reasons", "NewColl"
+      const proposal = await ResearchMondel.findById(proposalId);
+
+      if (!proposal) {
+        return res.status(404).json({
+          message: "Research proposal application not found.",
+        });
+      }
+
+      // ==========================================
+      // OWNERSHIP CHECK
+      // ==========================================
+
+      if (!isApplicationOwner(proposal, req)) {
+        return res.status(403).json({
+          message:
+            "Access denied: You can only update your own applications.",
+        });
+      }
+
+      // ==========================================
+      // ALLOWED RESEARCH FIELDS
+      // ==========================================
+
+      const allowedFields = [
+        "studentID",
+        "NCollege",
+        "Department",
+        "TDepartment",
+        "StudyF",
+        "Nadvisor",
+        "email",
+        "phone",
+        "PI",
+        "PIPhone",
+        "PIemail",
+        "Title",
+        "FocusA",
+        "SPeriodB",
+        "SPeriodE",
+        "ConductS",
+        "Rmethods",
+        "Study",
+        "Design",
+        "TDesign",
+        "geographicA",
+        "TGeographicA",
+        "Slocation",
+        "Gender",
+        "TGender",
+        "populations",
+        "MicroD",
+        "Eelectronically",
+        "Tools",
+        "Tcollection",
+        "TTcollection",
+        "Budget",
+        "Geocoordinate",
+        "Groups",
+        "Dsharing",
+        "Reasons",
+        "selectedChoices",
+        "NewColl",
       ];
 
-      textFields.forEach((field) => {
+      // ==========================================
+      // UPDATE ONLY ALLOWED FIELDS
+      // ==========================================
+
+      allowedFields.forEach((field) => {
         if (req.body[field] !== undefined) {
           proposal[field] = req.body[field];
         }
       });
 
-      if (req.body.FocusA !== undefined) {
-        try {
-          proposal.FocusA = JSON.parse(req.body.FocusA);
-        } catch (_) {
-          proposal.FocusA = req.body.FocusA;
-        }
-      }
+      // ==========================================
+      // PARSE JSON FORM DATA
+      // ==========================================
 
-      if (req.body.selectedChoices !== undefined) {
-        try {
-          proposal.selectedChoices = JSON.parse(req.body.selectedChoices);
-        } catch (_) {
-          proposal.selectedChoices = req.body.selectedChoices;
-        }
-      }
+      const jsonFields = [
+        "FocusA",
+        "selectedChoices",
+      ];
 
-      if (req.body.SPeriodB) proposal.SPeriodB = new Date(req.body.SPeriodB);
-      if (req.body.SPeriodE) proposal.SPeriodE = new Date(req.body.SPeriodE);
+      jsonFields.forEach((field) => {
+        if (req.body[field] !== undefined) {
+          try {
+            const value = req.body[field];
 
-      const replacementDocumentIdsRaw = req.body.replacementDocumentIds;
-      let replacementDocumentIds = [];
-
-      if (replacementDocumentIdsRaw) {
-        try {
-          replacementDocumentIds = JSON.parse(replacementDocumentIdsRaw);
-        } catch (_) {
-          replacementDocumentIds = Array.isArray(replacementDocumentIdsRaw)
-            ? replacementDocumentIdsRaw
-            : [replacementDocumentIdsRaw];
-        }
-      }
-
-      const uploadedReplacements = req.files || [];
-      let currentDocuments = proposal.documents || proposal.files || [];
-
-      replacementDocumentIds.forEach((docIdToReplace, index) => {
-        const newUploadedFile = uploadedReplacements[index];
-        if (!newUploadedFile) return;
-
-        const docIndex = currentDocuments.findIndex(
-          (doc) => String(doc._id || doc.id) === String(docIdToReplace)
-        );
-
-        const newDocObj = {
-          _id: docIdToReplace,
-          originalName: newUploadedFile.originalname,
-          filename: newUploadedFile.filename,
-          path: newUploadedFile.path,
-          url: `/uploads/${newUploadedFile.filename}`,
-          updatedAt: new Date()
-        };
-
-        if (docIndex !== -1) {
-          currentDocuments[docIndex] = {
-            ...currentDocuments[docIndex],
-            ...newDocObj
-          };
-        } else {
-          currentDocuments.push(newDocObj);
+            proposal[field] =
+              typeof value === "string"
+                ? JSON.parse(value)
+                : value;
+          } catch (error) {
+            proposal[field] = req.body[field];
+          }
         }
       });
 
-      proposal.documents = currentDocuments;
+      // ==========================================
+      // DOCUMENTS
+      // PRESERVE EXISTING DOCUMENTS
+      // ==========================================
 
-      // IMPORTANT: do not overwrite assignmentStatus / reviewStatus / approval status.
+      const existingDocuments = Array.isArray(proposal.documents)
+        ? proposal.documents
+        : [];
+
+      const replacementDocumentIds = req.body.replacementDocumentIds
+        ? JSON.parse(req.body.replacementDocumentIds)
+        : [];
+
+      const replacementFiles = req.files || [];
+
+      if (
+        replacementDocumentIds.length !== replacementFiles.length
+      ) {
+        return res.status(400).json({
+          message:
+            "Replacement document IDs and uploaded files do not match.",
+        });
+      }
+
+      // ==========================================
+      // REPLACE SELECTED DOCUMENTS
+      // ==========================================
+
+      if (replacementFiles.length > 0) {
+        for (let i = 0; i < replacementFiles.length; i++) {
+          const documentId = String(replacementDocumentIds[i]);
+          const uploadedFile = replacementFiles[i];
+
+          const documentIndex = existingDocuments.findIndex(
+            (doc) => String(doc._id) === documentId
+          );
+
+          if (documentIndex === -1) {
+            return res.status(400).json({
+              message: `Document ${documentId} does not belong to this application.`,
+            });
+          }
+
+          const oldDocument = existingDocuments[documentIndex];
+
+          // Safely preserve the existing document properties
+          const oldDocumentData =
+            oldDocument?.toObject
+              ? oldDocument.toObject()
+              : { ...oldDocument };
+
+          const newDocument = {
+            ...oldDocumentData,
+
+            originalName:
+              uploadedFile.originalname || uploadedFile.name,
+
+            filename:
+              uploadedFile.filename ||
+              uploadedFile.originalname,
+
+            url:
+              uploadedFile.path ||
+              uploadedFile.url ||
+              uploadedFile.secure_url ||
+              "",
+
+            secure_url:
+              uploadedFile.secure_url ||
+              uploadedFile.path ||
+              uploadedFile.url ||
+              "",
+
+            mimetype: uploadedFile.mimetype || "",
+
+            size: uploadedFile.size || 0,
+
+            uploadedAt: new Date(),
+          };
+
+          existingDocuments[documentIndex] = newDocument;
+        }
+
+        proposal.documents = existingDocuments;
+      }
+
+      // ==========================================
+      // SAVE
+      // ==========================================
+        // IMPORTANT: do not overwrite assignmentStatus / reviewStatus / approval status.
       // This separate field tells the secretary that the student edited and resaved it.
       proposal.studentResponseStatus = "Commented";
       proposal.studentRespondedAt = new Date();
       proposal.updatedAt = new Date();
 
-await proposal.save();
+      proposal.updatedAt = new Date();
 
-// ==========================================
-// AUDIT LOG: RESEARCH PROPOSAL UPDATED
-// ==========================================
+      await proposal.save();
 
-    await recordAudit(req, {
-      action: "RESEARCH_PROPOSAL_UPDATED",
-      category: "RESEARCH",
-      details: `Research proposal "${proposal.Title || "Untitled Proposal"}" updated by student. Student ID: ${proposal.studentID || "Not provided"}.`,
-      status: "success"
-    });
+      // ==========================================
+        // AUDIT RECORD - SUCCESSFUL RESEARCH UPDATE
+        // ==========================================
 
-    return res.status(200).json({
-        message: "Research application updated successfully. It is now marked as Commented.",
-        application: proposal
+        try {
+          await recordAudit(req, {
+            action: "RESEARCH_UPDATE",
+            category: "RESEARCH",
+            details: `Successfully updated research application: ${proposal._id} | Title: ${proposal.Title || "Untitled"}`,
+            status: "success",
+          });
+        } catch (auditError) {
+          console.error(
+            "Failed to save RESEARCH_UPDATE audit record:",
+            auditError
+          );
+        }
+
+      return res.status(200).json({
+        message: "Research application updated successfully.",
+        application: proposal,
       });
+
     } catch (error) {
-      console.error("Error updating proposal:", error);
+      console.error("Research application update error:", error);
+
+      // ==========================================
+      // AUDIT RECORD - SYSTEM ERROR
+      // ==========================================
+
+      try {
+        await recordAudit(req, {
+          action: "SYSTEM_ERROR",
+          category: "SYSTEM",
+          details: `Server error on ${req.method} ${req.originalUrl}`,
+          status: "failed",
+          errorMessage: error.message || "Unknown server error",
+        });
+      } catch (auditError) {
+        console.error(
+          "Failed to save SYSTEM_ERROR audit record:",
+          auditError
+        );
+      }
+
+      // ==========================================
+      // SERVER RESPONSE
+      // ==========================================
+
       return res.status(500).json({
-        message: "Failed to update proposal application."
+        message: "Failed to update research application.",
+        error: error.message,
       });
     }
   }
 );
+
+
 
 
 //////Homepage LabGuidlines/////////////////////////////////////////////////////////
@@ -19984,37 +21320,153 @@ app.post("/IRBUpload" ,(req, res) => {
 //////bulletin uploaded/////////////////////////////////////////////////////////
  //multer------------------------------------------------------------
 //const multer = require("multer");"./FinalReserchPaper"
+// const Colledge = multer.diskStorage({
+//     destination: function (req, file, cb) {
+//       cb(null, "./Colledge");
+//     },
+//     Colledgefilename: function (req, file, cb) {
+//       const uniqueSuffix = Date.now();
+//       cb(null, uniqueSuffix + file.originalname);
+//     },
+//   });
+  
+//   require("./model/Colledge");
+//   const ColledgeMondel = mongoose.model("Colledge");
+//   const ColledgeStorage = multer({ storage: Colledge });
+  
+//   app.post("/CreatCollName", ColledgeStorage.single("file"), async (req, res) => {
+//     console.log(req.file);
+//     const CollName = req.body.CollName;
+//   //  const BulletinfileName = req.file.filename;
+//     try {
+//       await ColledgeMondel.create({CollName:CollName });
+//       res.send({ status: "ok" });
+//     } catch (error) {
+//       res.json({ status: error });
+//     }
+//   });
+
 const Colledge = multer.diskStorage({
-    destination: function (req, file, cb) {
-      cb(null, "./Colledge");
-    },
-    Colledgefilename: function (req, file, cb) {
-      const uniqueSuffix = Date.now();
-      cb(null, uniqueSuffix + file.originalname);
-    },
-  });
-  
-  require("./model/Colledge");
-  const ColledgeMondel = mongoose.model("Colledge");
-  const ColledgeStorage = multer({ storage: Colledge });
-  
-  app.post("/CreatCollName", ColledgeStorage.single("file"), async (req, res) => {
-    console.log(req.file);
-    const CollName = req.body.CollName;
-  //  const BulletinfileName = req.file.filename;
+  destination: function (req, file, cb) {
+    cb(null, "./public/uploads");
+  },
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+
+require("./model/Colledge");
+
+const ColledgeMondel = mongoose.model("Colledge");
+
+const Colledgeupload = multer({
+  storage: Colledge,
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+});
+
+app.post(
+  "/CreatCollName",
+  Colledgeupload.array("files", 10),
+  async (req, res) => {
     try {
-      await ColledgeMondel.create({CollName:CollName });
-      res.send({ status: "ok" });
+      console.log(
+        "📩 Received files:",
+        req.files?.map((f) => f.originalname)
+      );
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({
+          message: "No files uploaded",
+        });
+      }
+
+      const { CollName } = req.body;
+
+      const uploadedFiles = [];
+
+      for (const file of req.files) {
+        const result = await cloudinary.uploader.upload(file.path, {
+          resource_type: "auto",
+          folder: "ColledLogo",
+        });
+
+        // Save to MongoDB
+        const savedFile = await ColledgeMondel.create({
+          CollName,
+          public_id: result.public_id,
+          secure_url: result.secure_url,
+          original_filename: file.originalname,
+          format: result.format,
+        });
+
+        uploadedFiles.push(savedFile);
+
+        // Remove temporary local file
+        if (fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      }
+
+      // ==========================================
+      // AUDIT LOG: DATA COLLECTION CONFIRMATION
+      // ==========================================
+
+      await writeAuditLog(req, {
+        action: "Data collection confirmation submitted",
+        details: `Applicant: ${CollName || "Not provided"}.`,
+        entityType: "Data Collection Confirmation",
+        entityId: uploadedFiles
+          .map((file) => String(file._id))
+          .join(", "),
+        outcome: "success",
+      });
+
+      return res.send({ status: "ok" });
     } catch (error) {
-      res.json({ status: error });
+      console.error("CreatCollName error:", error);
+
+      return res.status(500).json({
+        status: "error",
+        message: error.message,
+      });
     }
-  });
-  app.get('/ColledgeList',(req, res) =>{
-    
-    ColledgeMondel.find({}).sort({createdAt: -1})
-    .then(users => res.json(users))
-    .catch(err => console.log(err))  
-    })
+  }
+);
+
+
+////////////////////////////////////////////////////////////////////////////
+  app.get("/ColledgeList", async (req, res) => {
+  try {
+    const colleges = await ColledgeMondel.find().sort({ _id: -1 });
+
+    return res.status(200).json({
+      status: "ok",
+      data: colleges,
+    });
+
+  } catch (error) {
+    console.error("College GET error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+});
+
+/////////////////////////////////////////////////////////////////////////////////////////////
+app.get("/PreviouslyColledge", async (req, res) => {
+  try {
+    ColledgeMondel.find({}).then((data) => {
+      res.send({ status: "ok", data: data });
+    });
+  } catch (error) {}
+});
 
     ////////////////////////////fetchinf Number of colledge for reserch dashbored////////////
         app.get("/TotalColledge", async (req, res) => {

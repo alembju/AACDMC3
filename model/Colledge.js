@@ -1,7 +1,10 @@
 const mongoose = require("mongoose");
 const ColledgeScehma = new mongoose.Schema({
   CollName: String, 
-  pdf: String,
+  public_id: String,
+  url: String,
+  original_filename: String,
+  format: String,
 },
 {
   timestamps: true // This automatically adds 'createdAt' and 'updatedAt' fields
