@@ -28,6 +28,10 @@ const ResearchSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+    ListCorrections: {
+    type: [String],
+    default: []
+  },
     TOtherFocusA: String,
     SPeriodB: Date,
     SPeriodE: Date,

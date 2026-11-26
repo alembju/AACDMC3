@@ -3288,21 +3288,63 @@ app.put("/research-assignment-status/:id", async (req, res) => {
 });
 
   // ==========================================
-    //fetch assignments from ResearchAssignment
-    // ==========================================
+  //fetch assignments from ResearchAssignment
+  // ==========================================
 
 
-app.get("/api/research-assignment/badges/:researcherId", authenticateToken, async (req, res) => {
-  try {
-    const researcherId = req.params.researcherId;
-    if (String(req.user.userId || req.user.id || req.user._id) !== String(researcherId)) return res.status(403).json({ status: "error", message: "Access denied." });
-    const assignments = await ResearchAssignmentModel.find({ researchUserId: researcherId }).select("proposalId researchUserId assignedAt studentResponseStatus status").lean();
-    return res.status(200).json({ status: "ok", data: assignments });
-  } catch (error) {
-    console.error("Error fetching researcher assignment badges:", error);
-    return res.status(500).json({ status: "error", message: "Failed to fetch assignment records." });
+app.get(
+  "/api/research-assignment/badges/:researcherId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { researcherId } = req.params;
+
+      const authenticatedUserId = String(
+        req.user.userId || req.user.id || req.user._id || ""
+      );
+
+      // Validate researcher ID
+      if (!mongoose.Types.ObjectId.isValid(researcherId)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid researcher ID.",
+        });
+      }
+
+      // Only allow the authenticated researcher to access their records
+      if (authenticatedUserId !== String(researcherId)) {
+        return res.status(403).json({
+          status: "error",
+          message: "Access denied.",
+        });
+      }
+
+      const assignments = await ResearchAssignmentModel.find({
+        researchUserId: researcherId,
+      })
+        .select(
+          "proposalId researchUserId assignedAt studentResponseStatus status"
+        )
+        .lean();
+
+      return res.status(200).json({
+        status: "ok",
+        count: assignments.length,
+        data: assignments,
+      });
+    } catch (error) {
+      console.error(
+        "Error fetching researcher assignment badges:",
+        error
+      );
+
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to fetch assignment records.",
+      });
+    }
   }
-});
+);
    // ==========================================
     //FIND PROPOSALS ASSIGNED TO THIS RESEARCHER
     // ==========================================
@@ -6262,36 +6304,117 @@ app.post("/api/users/login", async (req, res) => {
   }
 });
 //////////////////////////////////fetchinf reserch for reserch unit//////////
-app.get('/fetching-Rech', async(req, res) =>{
-    
-    //ResearchMondel.find()
-    const allUser = await ResearchMondel.find({});
-  const page = parseInt(req.query.page)
-  const limit = parseInt(req.query.limit)
+// ============================================
+// FETCH RESEARCH FILES
+// Display only one file for each unique PI + Title
+// ============================================
 
-  const startIndex = (page - 1) * limit
-  const lastIndex = (page) * limit
+app.get("/fetching-Rech", async (req, res) => {
+  try {
+    const page = Math.max(
+      parseInt(req.query.page) || 1,
+      1
+    );
 
-  const results = {}
-  results.totalUser=allUser.length;
-  results.pageCount=Math.ceil(allUser.length/limit);
+    const limit = Math.max(
+      parseInt(req.query.limit) || 10,
+      1
+    );
 
-  if (lastIndex < allUser.length) {
-    results.next = {
-      page: page + 1,
+    const startIndex = (page - 1) * limit;
+
+    // ============================================
+    // REMOVE DUPLICATES BASED ON PI + TITLE
+    // ============================================
+
+    const uniqueResearch = await ResearchMondel.aggregate([
+      {
+        $sort: {
+          createdAt: 1,
+          _id: 1
+        }
+      },
+
+      {
+        $group: {
+          _id: {
+            PI: {
+              $ifNull: ["$PI", ""]
+            },
+
+            Title: {
+              $ifNull: ["$Title", ""]
+            }
+          },
+
+          research: {
+            $first: "$$ROOT"
+          }
+        }
+      },
+
+      {
+        $replaceRoot: {
+          newRoot: "$research"
+        }
+      },
+
+      // Keep the results in a consistent order
+      {
+        $sort: {
+          createdAt: 1,
+          _id: 1
+        }
+      }
+    ]);
+
+    // ============================================
+    // PAGINATION
+    // ============================================
+
+    const totalUser = uniqueResearch.length;
+
+    const pageCount = Math.ceil(
+      totalUser / limit
+    );
+
+    const results = {
+      totalUser,
+      pageCount,
+      page,
+      limit,
+      result: uniqueResearch.slice(
+        startIndex,
+        startIndex + limit
+      )
+    };
+
+    if (page < pageCount) {
+      results.next = {
+        page: page + 1
+      };
     }
-  }
-  if (startIndex > 0) {
-    results.prev = {
-      page: page - 1,
+
+    if (page > 1) {
+      results.prev = {
+        page: page - 1
+      };
     }
+
+    res.json(results);
+
+  } catch (error) {
+    console.error(
+      "Error fetching research:",
+      error
+    );
+
+    res.status(500).json({
+      message: "Failed to fetch research records",
+      error: error.message
+    });
   }
-  results.result = allUser.slice(startIndex, lastIndex);
-  res.json(results)
-    //.then(user => res.json(user))
-    //.catch(err => console.log(err))  
-    ///passswpred---------invg pgzi yrbs qntc----
-    })
+});
     
       /////////delet geting all news//////////////////
      app.get("/RECH-Proposal", async (req, res) => {
@@ -17834,10 +17957,22 @@ const streamUpload = (fileBuffer, originalName) => {
   });
 };
 
+
 // ==========================================
 // RESEARCH PROPOSAL SUBMISSION
 // ALL FIVE FILES IN ONE MONGODB RECORD
 // ==========================================
+
+// const fs = require("fs");
+// const path = require("path");
+// const axios = require("axios");
+
+// Make sure these already exist in your project:
+// ResearchStor
+// ResearchMondel
+// cloudinary
+// streamUpload
+// recordAudit
 
 app.post(
   "/ResearchP",
@@ -17853,12 +17988,6 @@ app.post(
     const cloudinaryUploads = [];
 
     try {
-      console.log("Received document fields:", Object.keys(req.files || {}));
-
-      // ==========================================
-      // VALIDATE ALL FIVE DOCUMENTS
-      // ==========================================
-
       const requiredFields = [
         "supportingLetter",
         "kebeleID",
@@ -17867,13 +17996,18 @@ app.post(
         "proposalWord",
       ];
 
+      // Validate all five uploaded files
       for (const field of requiredFields) {
-        if (!req.files?.[field]?.[0]) {
+        const file = req.files?.[field]?.[0];
+
+        if (!file) {
           return res.status(400).json({
             status: "error",
             message: `Missing required document: ${field}`,
           });
         }
+
+        temporaryFiles.push(file.path);
       }
 
       const {
@@ -17917,10 +18051,6 @@ app.post(
         NewColl,
       } = req.body;
 
-      // ==========================================
-      // MAP FILES TO DOCUMENT TYPES
-      // ==========================================
-
       const documentFields = {
         supportingLetter: req.files.supportingLetter[0],
         kebeleID: req.files.kebeleID[0],
@@ -17929,15 +18059,10 @@ app.post(
         proposalWord: req.files.proposalWord[0],
       };
 
-      // ==========================================
-      // UPLOAD ALL FIVE FILES TO CLOUDINARY
-      // ==========================================
-
       const documents = {};
 
+      // Upload all documents to Cloudinary
       for (const [documentType, file] of Object.entries(documentFields)) {
-        temporaryFiles.push(file.path);
-
         const fileBuffer = await fs.promises.readFile(file.path);
 
         const uploaded = await streamUpload(
@@ -17946,27 +18071,32 @@ app.post(
         );
 
         cloudinaryUploads.push({
-            public_id: uploaded.public_id,
-            resource_type: uploaded.resource_type,
-          });
+          public_id: uploaded.public_id,
+          resource_type: uploaded.resource_type || "raw",
+        });
 
         documents[documentType] = {
           public_id: uploaded.public_id,
           url: uploaded.secure_url,
           original_filename: file.originalname,
-          format: uploaded.format || path.extname(file.originalname).replace(".", ""),
+          format:
+            uploaded.format ||
+            path.extname(file.originalname).replace(".", "").toLowerCase(),
         };
 
-        console.log(
-          `Uploaded ${documentType}:`,
-          uploaded.secure_url
-        );
+        console.log(`${documentType} uploaded:`, {
+          public_id: uploaded.public_id,
+          url: uploaded.secure_url,
+          format: documents[documentType].format,
+        });
       }
 
-      // ==========================================
-      // SAVE ONE PROPOSAL RECORD IN MONGODB
-      // ==========================================
+      // Confirm the Word document was uploaded
+      if (!documents.proposalWord?.url) {
+        throw new Error("The Word document was not uploaded successfully.");
+      }
 
+      // Save proposal and document information
       const savedProposal = await ResearchMondel.create({
         studentID,
         NCollege,
@@ -18007,20 +18137,16 @@ app.post(
         Reasons,
         NewColl,
 
-        // All five documents saved in this one record
-        documents,
-
-        // Keep legacy fields if your existing frontend uses them
-        public_id: documents.proposalPDF.public_id,
-        url: documents.proposalPDF.url,
-        original_filename: documents.proposalPDF.original_filename,
-        format: documents.proposalPDF.format,
+        documents: {
+          supportingLetter: documents.supportingLetter,
+          kebeleID: documents.kebeleID,
+          cvPDF: documents.cvPDF,
+          proposalPDF: documents.proposalPDF,
+          proposalWord: documents.proposalWord,
+        },
       });
 
-      // ==========================================
-      // AUDIT LOG: RESEARCH PROPOSAL SUBMITTED
-      // ==========================================
-
+      // Audit log
       try {
         await recordAudit(req, {
           action: "RESEARCH_PROPOSAL_SUBMITTED",
@@ -18028,34 +18154,12 @@ app.post(
           details:
             `Submitted research proposal "${Title || "Untitled Proposal"}". ` +
             `Student ID: ${studentID || "Not provided"}. ` +
-            `College: ${NCollege || "Not provided"}. ` +
-            `Principal Investigator: ${PI || "Not provided"}. ` +
             `Number of uploaded files: 5.`,
           status: "success",
         });
       } catch (auditError) {
         console.error("Audit logging error:", auditError);
       }
-
-      // ==========================================
-      // REMOVE TEMPORARY LOCAL FILES
-      // ==========================================
-
-      await Promise.all(
-        temporaryFiles.map((filePath) =>
-          fs.promises.unlink(filePath).catch(() => {})
-        )
-      );
-
-      return res.status(201).json({
-        status: "success",
-        message: "Proposal and all five documents saved successfully.",
-        proposal: savedProposal,
-        documents: savedProposal.documents,
-      });
-
-    } catch (err) {
-      console.error("Research proposal upload error:", err);
 
       // Remove temporary files
       await Promise.all(
@@ -18064,25 +18168,165 @@ app.post(
         )
       );
 
-      // Remove Cloudinary files if the operation failed
+      return res.status(201).json({
+        status: "success",
+        message: "Proposal and all five documents uploaded successfully.",
+        proposal: savedProposal,
+        documents: savedProposal.documents,
+      });
+
+    } catch (error) {
+      console.error("Research proposal upload error:", error);
+
+      // Remove temporary files
       await Promise.all(
-        cloudinaryUploads.map((publicId) =>
+        temporaryFiles.map((filePath) =>
+          fs.promises.unlink(filePath).catch(() => {})
+        )
+      );
+
+      // Delete Cloudinary files uploaded before the error
+      await Promise.all(
+        cloudinaryUploads.map((file) =>
           cloudinary.uploader
-            .destroy(publicId, { resource_type: "raw" })
-            .catch((cloudinaryError) =>
-              console.error("Cloudinary cleanup error:", cloudinaryError)
-            )
+            .destroy(file.public_id, {
+              resource_type: file.resource_type,
+            })
+            .catch((cloudinaryError) => {
+              console.error(
+                "Cloudinary cleanup error:",
+                cloudinaryError
+              );
+            })
         )
       );
 
       return res.status(500).json({
         status: "error",
         message: "Proposal upload failed.",
-        error: err.message,
+        error: error.message,
       });
     }
   }
 );
+
+///////////////////////////////////////////////////////////////
+// Backend: download the Word document
+
+//////////////////////////////////////////////////////////////
+
+
+app.get(
+  "/api/research/:id/proposal-word/download",
+    authenticateToken,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid proposal ID.",
+        });
+      }
+
+      const proposal = await ResearchMondel.findById(id).select(
+        "Title documents.proposalWord"
+      );
+
+      if (!proposal) {
+        return res.status(404).json({
+          status: "error",
+          message: "Research proposal not found.",
+        });
+      }
+
+      const wordDocument = proposal.documents?.proposalWord;
+
+      if (!wordDocument?.url) {
+        return res.status(404).json({
+          status: "error",
+          message: "Word document URL not found for this proposal.",
+        });
+      }
+
+      // Only allow files hosted on Cloudinary.
+      const cloudinaryUrl = new URL(wordDocument.url);
+
+      if (
+        cloudinaryUrl.protocol !== "https:" ||
+        !(
+          cloudinaryUrl.hostname === "res.cloudinary.com" ||
+          cloudinaryUrl.hostname.endsWith(".res.cloudinary.com")
+        )
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid document storage URL.",
+        });
+      }
+
+      const filename =
+        wordDocument.original_filename || "ResearchProposal.docx";
+
+      // Download the file from Cloudinary
+      const cloudinaryResponse = await axios.get(wordDocument.url, {
+        responseType: "stream",
+        timeout: 60000,
+        maxRedirects: 5,
+      });
+
+      // Force the browser to download it as a Word document
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="ResearchProposal.docx"; filename*=UTF-8''${encodeURIComponent(filename)}`
+      );
+
+      res.setHeader("Cache-Control", "private, no-store");
+
+      cloudinaryResponse.data.on("error", (error) => {
+        console.error("Cloudinary download stream error:", error);
+
+        if (!res.headersSent) {
+          res.status(502).json({
+            status: "error",
+            message: "Unable to download the Word document.",
+          });
+        } else {
+          res.destroy(error);
+        }
+      });
+
+      cloudinaryResponse.data.pipe(res);
+
+    } catch (error) {
+      console.error("Word document download error:", error);
+
+      if (!res.headersSent) {
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to download Word document.",
+          error: error.message,
+        });
+      }
+
+      res.destroy(error);
+    }
+  }
+);
+/////////////////////////////////////////////////////////////////////////
+
+app.get('/get-filesDoc',(req, res) =>{
+    
+    ResearchMondel.find({})
+    .then(users => res.json(users))
+    .catch(err => console.log(err))
+    })
 
 ///////////////////////////////////////////////////////////////////
 app.get("/api/research/:id", async (req, res) => {
@@ -18253,6 +18497,77 @@ app.get(
     }
   }
 );
+
+
+// ==========================================
+// RESEARCH PROPOSAL New Colledge Geting
+// ==========================================
+ // ============================================
+// GET UNIQUE COLLEGES BASED ON NewColl
+// ============================================
+
+app.get("/NewColledg", async (req, res) => {
+  try {
+
+    const colleges = await ResearchMondel.aggregate([
+
+      // Sort newest records first
+      {
+        $sort: {
+          _id: -1
+        }
+      },
+
+      // Group by NewColl
+      {
+        $group: {
+          _id: {
+            $trim: {
+              input: {
+                $ifNull: ["$NewColl", ""]
+              }
+            }
+          },
+
+          college: {
+            $first: "$$ROOT"
+          }
+        }
+      },
+
+      // Return original document
+      {
+        $replaceRoot: {
+          newRoot: "$college"
+        }
+      },
+
+      // Sort results
+      {
+        $sort: {
+          _id: -1
+        }
+      }
+
+    ]);
+
+    return res.status(200).json({
+      status: "ok",
+      total: colleges.length,
+      data: colleges,
+    });
+
+  } catch (error) {
+
+    console.error("College GET error:", error);
+
+    return res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+
+  }
+});
 // ==========================================
 // RESEARCH PROPOSAL API ROUTES
 // ==========================================
@@ -18528,6 +18843,7 @@ app.post(
         Title: req.body.Title,
 
         FocusA: parseField(req.body.FocusA, []),
+        ListCorrections: parseField(req.body.FocusA, []),
 
         SPeriodB: req.body.SPeriodB || null,
         SPeriodE: req.body.SPeriodE || null,
@@ -18937,6 +19253,7 @@ app.put(
         "PIemail",
         "Title",
         "FocusA",
+        "ListCorrections",
         "SPeriodB",
         "SPeriodE",
         "ConductS",
@@ -18980,6 +19297,7 @@ app.put(
 
       const jsonFields = [
         "FocusA",
+        "ListCorrections",
         "selectedChoices",
       ];
 
